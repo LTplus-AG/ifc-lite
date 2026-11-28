@@ -22,12 +22,16 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, click } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { en } from '@/i18n/en';
 import { ViewportHud } from '../viewport-ui/hud/ViewportHud.js';
 import { SceneOverlayRoot } from '../viewport-ui/scene';
-import { ToolOverlays } from './ToolOverlays.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { installManualFrames } from '@/test/manual-frames';
+import { LocalTab } from './placement/LocalTab';
+import { dispatchKeyboardDown } from '@/lib/commands/dispatcher';
+import { loadRepositionTool, ToolOverlays } from './ToolOverlays.js';
 import { registerModelingCommand } from '@/lib/commands/modeling/registry';
 import { seedModelingSession } from '@/test/modeling-session-fixture';
 
@@ -56,6 +60,37 @@ describe('ToolOverlays on the TOOL_HUD table (#5503)', () => {
     // Mutation check: reverting `ToolOverlays` to mount its own inner
     // `SceneOverlayRoot` (pre-#5512) would leave TWO
     // `[data-scene-overlay-root]` nodes here, not one.
+  });
+
+  it('loads Reposition on first open and restores the controls synchronously on reopen (#11746)', async () => {
+    const previous = useViewerStore.getState();
+    const frames = installManualFrames();
+    try {
+      useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc')), editEnabled: true });
+      const ui = render(<SceneOverlayRoot><ToolOverlays /><LocalTab /></SceneOverlayRoot>);
+      const source = () => ui.querySelector<HTMLButtonElement>('button[aria-label="Pick source point"]')
+        ?? [...ui.querySelectorAll('button')].find(button => button.textContent === 'Pick source point');
+      act(() => useViewerStore.getState().openReposition(['ifc']));
+      assert.ok(!source(), 'the cold session waits for its runtime');
+      assert.ok(ui.querySelector('button[aria-label="' + en['repositionPanel.cancelAriaLabel'] + '"]'));
+      act(() => { dispatchKeyboardDown(new KeyboardEvent('keydown', { key: 'Escape' })); });
+      assert.equal(useViewerStore.getState().repositionOpen, false);
+      await act(async () => { await loadRepositionTool(); });
+      assert.equal(useViewerStore.getState().modelPlacement.preview, null);
+      assert.ok(!source(), 'finishing the import leaves the cancelled session closed');
+      act(() => useViewerStore.getState().openReposition(['ifc']));
+      assert.ok(source(), 'the downloaded runtime mounts on the next open');
+      click(source()!);
+      assert.match(ui.textContent ?? '', /Pick a source point/);
+      act(() => useViewerStore.getState().closeReposition());
+      assert.ok(!source());
+      act(() => useViewerStore.getState().openReposition(['ifc']));
+      assert.ok(source(), 'a warm session mounts immediately');
+    } finally {
+      cleanup();
+      frames.restore();
+      useViewerStore.setState(previous, true);
+    }
   });
 
   it('places a running command\'s bar top-center and its hint bottom-center, and removes both when the tool changes', async () => {

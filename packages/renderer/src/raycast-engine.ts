@@ -16,6 +16,7 @@ import { RaycastFlatIndex, type RaycastScene } from './raycast-flat-index.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
+import { CornerMarkerChannel } from './screen-corner-markers.js';
 import { ScreenCornerIndex } from './snap-screen-corners.js';
 import { withScreenCorner } from './raycast-screen-corner.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
@@ -34,6 +35,7 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private flatIndex: RaycastFlatIndex;
+    readonly cornerMarkers = new CornerMarkerChannel();
     private readonly unsubscribeEviction: (() => void) | void;
     private screenCorners = new ScreenCornerIndex();
     private pointCloudProvider: PointCloudRayProvider | null = null;
@@ -94,6 +96,7 @@ export class RaycastEngine {
             // Release the previous readback inventory and any pending idle build before its leases end.
             this.screenCorners.clear();
             this.cornerInventory = null;
+            this.cornerMarkers.set(null);
         }
         this.readbackMeshes = meshes ?? [];
         this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;
@@ -310,6 +313,8 @@ export class RaycastEngine {
                 orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
             });
 
+            const markers = options?.snapOptions?.screenCornerSnap;
+            if (markers?.markers) this.cornerMarkers.publish(this.screenCorners, markers, x, y, this.readbackViewKey(), magneticResult.snapTarget);
             return {
                 intersection,
                 ...magneticResult,
@@ -331,6 +336,7 @@ export class RaycastEngine {
         this.cornerInventory = null;
         this.flatIndex.invalidate();
         this.screenCorners.clear();
+        this.cornerMarkers.set(null);
     }
 
     /** Diagnostic (#10264): CPU geometry the raycast index and its BVH still reference. */
@@ -350,6 +356,7 @@ export class RaycastEngine {
         this.flatIndex.invalidate();
         this.snapDetector.clearCache();
         this.screenCorners.clear();
+        this.cornerMarkers.set(null);
         this.pointCloudProvider = null;
         this.sourceSnapCurves = [];
     }

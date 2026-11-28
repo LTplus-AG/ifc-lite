@@ -455,7 +455,7 @@ describe('RaycastEngine.raycastScene', () => {
     const engine = engineFor(scene, camera), idle = new ManualIdleHost();
     const run = (filter: PickOptions = {}, eligibleModelIndices?: Set<number>) => engine.raycastSceneMagnetic(
       at.x, at.y - 5, { edge: null, meshExpressId: null, lockStrength: 0 },
-      { ...filter, snapOptions: { snapToVertices: true, screenCornerSnap: { idleHost: idle, settleMs: 0, eligibleModelIndices } } });
+      { ...filter, snapOptions: { snapToVertices: true, screenCornerSnap: { idleHost: idle, settleMs: 0, markers: true, eligibleModelIndices } } });
     const settle = (filter: PickOptions = {}, eligible?: Set<number>) => {
       run(filter, eligible); idle.drain(); return run(filter, eligible);
     };
@@ -470,15 +470,25 @@ describe('RaycastEngine.raycastScene', () => {
     assert.ok(target);
     assert.equal(target.type, 'vertex');
     assert.deepEqual(target.position, { x: 3, y: 12, z: 0 });
+    const markers = engine.cornerMarkers.get();
+    assert.ok(markers && markers.activeIndex >= 0);
+    const active = markers.candidates[markers.activeIndex];
+    assert.equal(active.expressId, target.expressId);
+    assert.deepEqual(active.position, target.position);
     scene.setInstancedVisible(true);
     assert.equal(run().snapTarget?.expressId, 1025, 'an unchanged pass keeps the warm index');
     scene.setInstancedVisible(false);
     assert.equal(scene.getInstancedTemplates().length, 0, 'Types view hides the draw pass');
     assert.equal(run().snapTarget, null, 'the first hidden pick discards the visible index');
+    assert.equal(engine.cornerMarkers.get(), null);
     assert.equal(settle().snapTarget, null, 'a settled Types view excludes the occurrence');
+    assert.equal(engine.cornerMarkers.get(), null);
     scene.setInstancedVisible(true);
     assert.deepEqual(settle().snapTarget?.position, target.position, 'Model view restores the transformed corner');
+    const restored = engine.cornerMarkers.get();
+    assert.deepEqual(restored?.candidates[restored.activeIndex], active);
     assert.equal(settle({ hiddenIds: new Set([1025]) }).snapTarget, null);
+    assert.equal(engine.cornerMarkers.get(), null);
     assert.equal(settle({ isolatedIds: new Set([99]) }).snapTarget, null);
     assert.equal(settle({}, new Set([8])).snapTarget, null);
     assert.equal(settle({ isolatedIds: new Set([1025]) }, new Set([7])).snapTarget?.expressId, 1025);
@@ -1135,7 +1145,7 @@ describe('RaycastEngine flat index (#9504)', () => {
       const cornerIndex = engine['screenCorners'];
       const cornerPick = (hiddenIds?: Set<number>, x = 478, y = 222) => engine.raycastSceneMagnetic(x, y, {
         edge: null, meshExpressId: null, lockStrength: 0,
-      }, { hiddenIds, snapOptions: { snapToVertices: true, screenCornerSnap: { settleMs: 0, idleHost: idle } } });
+      }, { hiddenIds, snapOptions: { snapToVertices: true, screenCornerSnap: { settleMs: 0, idleHost: idle, markers: !hiddenIds } } });
       cornerPick();
       idle.drain();
       assert.equal(cornerPick().snapTarget?.expressId, 7, 'the warm grid picks the corner over background');
@@ -1145,6 +1155,7 @@ describe('RaycastEngine flat index (#9504)', () => {
       // Start another grid over the same resident MeshData. Evict before its first idle callback.
       cornerPick(new Set([100]));
       assert.ok(idle.pending > 0);
+      assert.ok(engine.cornerMarkers.get());
       const revision = scene.getPickGeometryRevision();
 
       if (ephemeral) {
@@ -1162,6 +1173,7 @@ describe('RaycastEngine flat index (#9504)', () => {
       // #11753: no pointer input or idle tick between eviction and these assertions.
       assert.deepEqual({ retainedGrid: cornerIndex.stats() !== null, pendingWork: idle.pending },
         { retainedGrid: false, pendingWork: 0 });
+      assert.equal(engine.cornerMarkers.get(), null);
       assert.equal(weldCache.size, 0);
       assert.equal(idle.drain(), 0);
       assertReleased(engine);
@@ -1195,7 +1207,7 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     const cursor = { x: at.x - 5, y: at.y + 5 };
     const run = (x = cursor.x, hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(x, cursor.y,
       { edge: null, meshExpressId: null, lockStrength: 0 }, { hiddenIds, snapOptions: {
-        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { settleMs: 0, idleHost: idle },
+        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { markers: true, settleMs: 0, idleHost: idle },
       } });
     const prepared = { ...quad, positions: quad.positions.slice() };
     engine.setReadbackMeshes([prepared], cursor);
@@ -1203,6 +1215,17 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     idle.drain();
     assert.deepEqual(run().snapTarget?.position, corner);
     assert.equal(run().snapTarget?.type, 'vertex');
+    for (const replacement of [[{ ...prepared }], null]) {
+      const markers = engine.cornerMarkers.get();
+      assert.ok(markers && markers.activeIndex >= 0);
+      engine.setReadbackMeshes([prepared], cursor);
+      assert.equal(engine.cornerMarkers.get(), markers, 'equivalent inventory keeps its markers');
+      engine.setReadbackMeshes(replacement, cursor);
+      assert.equal(engine.cornerMarkers.get(), null, 'inventory invalidation clears markers before another pick');
+      engine.setReadbackMeshes([prepared], cursor);
+      run(); idle.drain();
+      assert.equal(run().snapTarget?.type, 'vertex');
+    }
     assert.equal(run(cursor.x - 2).snapTarget, null, 'a neighbouring uncovered ray cannot reuse the warm grid');
     run(); idle.drain();
     assert.equal(run(cursor.x, new Set([17])).snapTarget, null);

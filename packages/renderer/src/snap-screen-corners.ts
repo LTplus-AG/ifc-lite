@@ -30,6 +30,8 @@ import type { PickClipState } from './pick-types.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
 import type { StepBuild } from './snap-geometry-build.js';
 import type { IdleHost } from './snap-idle-host.js';
+import type { CornerGrid } from './snap-corner-grid.js';
+import type { Vec3 } from './raycaster.js';
 import type { ScreenSnapCamera, ScreenCornerHit } from './snap-corner-grid.js';
 import { gridKey } from './snap-corner-key.js';
 import { CornerBuildPipeline, DEFAULT_MAX_SLICE_MS, DEFAULT_SETTLE_MS, type BuildStats } from './snap-corner-pipeline.js';
@@ -71,10 +73,22 @@ export interface ScreenCornerSnapOptions {
   ignoreOcclusion?: boolean;
   /** Depth slack, in world units, for the occlusion rule. Default 0.05 + 1 % of the hit distance. */
   occlusionTolerance?: number;
+  markers?: boolean;
+  markerRadiusPx?: number;
+  markerLimit?: number;
 }
 
 export const DEFAULT_CORNER_RADIUS_PX = 10;
 export const DEFAULT_EDGE_RADIUS_PX = 6;
+
+export interface ScreenCornerCandidate {
+  /** CSS px, canvas space. */
+  screen: { x: number; y: number };
+  position: Vec3;
+  expressId: number;
+  /** Screen distance from the cursor, in CSS px. */
+  distancePx: number;
+}
 
 function screenRadius(value: number | undefined, fallback: number): number {
   const radius = value ?? fallback;
@@ -82,10 +96,17 @@ function screenRadius(value: number | undefined, fallback: number): number {
 }
 
 export class ScreenCornerIndex {
+  private live: { grid: CornerGrid; ray: Ray; maxDepth: number } | null = null;
+  dropLive(): void { this.live = null; }
+  candidatesNear(x: number, y: number, radius: number, limit = 12): ScreenCornerCandidate[] {
+    return this.live?.grid.candidatesNear(x, y, radius, limit, this.live.ray, this.live.maxDepth) ?? [];
+  }
+
   private pipeline: CornerBuildPipeline | null = null;
 
   /** Drop everything built from geometry (call with the snap detector's cache) and stop the idle work. */
   clear(): void {
+    this.dropLive();
     this.pipeline?.clear();
     this.pipeline = null;
   }
@@ -123,6 +144,7 @@ export class ScreenCornerIndex {
     /** Candidate kinds that may be returned (default both). A disabled kind is excluded before the grid search. */
     kinds?: { corners?: boolean; edges?: boolean };
   }): ScreenCornerHit | null {
+    this.dropLive();
     const { x, y, viewport, options } = args;
     const cornerR = screenRadius(options.cornerRadiusPx, DEFAULT_CORNER_RADIUS_PX);
     const edgeR = screenRadius(options.edgeRadiusPx, DEFAULT_EDGE_RADIUS_PX);
@@ -151,6 +173,7 @@ export class ScreenCornerIndex {
     const slack = options.occlusionTolerance;
     const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
       : hit + (slack !== undefined && Number.isFinite(slack) && slack >= 0 ? slack : 0.05 + 0.01 * hit);
+    if (args.kinds?.corners !== false) this.live = { grid, ray: args.ray, maxDepth };
     return grid.search(x, y, args.ray, cornerR, edgeR, maxDepth, args.kinds);
   }
 }

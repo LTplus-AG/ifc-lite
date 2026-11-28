@@ -13,7 +13,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -24,7 +24,10 @@ import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { syncMeasureScreenCoords } from './measureHandlers.js';
-import type { Renderer } from '@ifc-lite/renderer';
+import { SnapCornerMarkers } from './tools/SnapCornerMarkers';
+import { render, cleanup } from '@/test/render';
+import { setGlobalRendererRef } from '@/lib/renderer-ref';
+import { Renderer } from '@ifc-lite/renderer';
 import { captureViewportFrame, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
 
 const s = () => useViewerStore.getState();
@@ -1151,6 +1154,158 @@ describe('the Distance end over background (#9049)', () => {
     fire(canvas, 'pointermove', 500, 250);
     flushFrames();
     assert.equal(xy(s().activeMeasurement?.current), '5,0', 'the end did not follow the cursor back onto the model');
+  });
+
+  async function cornerScene(t: TestContext, canvas: HTMLCanvasElement, ctx: MouseHandlerContext, authored = false) {
+    const renderer = new Renderer(canvas);
+    const camera = renderer.getCamera();
+    camera.setAspect(800 / 600);
+    camera.setProjectionMode('orthographic');
+    camera.setOrthoSize(10);
+    camera.setPosition(0, 0, 10);
+    camera.setTarget(0, 0, 0);
+    t.mock.method(canvas, 'getBoundingClientRect', () => ({ left: 0, top: 0, width: 800, height: 600 }));
+    const mesh = { expressId: 42, positions: Float32Array.of(2,1,0, 3,1,0, 2,2,0),
+      indices: Uint32Array.of(0,1,2), normals: Float32Array.of(0,0,1, 0,0,1, 0,0,1), color: [1,1,1,1] };
+    const handles = [{ expressId: mesh.expressId }];
+    t.mock.method(renderer.getScene(), 'getMeshes', () => handles);
+    t.mock.method(renderer.getScene(), 'getMeshDataPieces', () => [mesh]);
+    Object.assign(ctx.renderer, { cornerMarkers: renderer.cornerMarkers,
+      raycastScene: renderer.raycastScene.bind(renderer),
+      raycastSceneMagnetic: renderer.raycastSceneMagnetic.bind(renderer) });
+    if (authored) renderer.setSourceSnapCurves([{
+      identity: { modelId: 'model', expressId: 42, solidId: 1, directrixId: 2,
+        mappingPath: [], occurrenceIndex: 0, segmentIndex: 0 },
+      globalId: 42, kind: 'line', length: 1, pointAt: t => ({ x: 2 + t, y: 1, z: 0 }),
+    }]);
+    setGlobalRendererRef({ current: renderer });
+    const overlay = render(<SnapCornerMarkers />);
+    t.after(() => { cleanup(); setGlobalRendererRef(null); });
+    const at = camera.projectToScreen({ x: 2, y: 1, z: 0 }, 800, 600)!;
+    const hover = (shiftKey: boolean) => {
+      ctx.lastMeasureRaycastDurationRef.current = 0;
+      fire(canvas, 'pointermove', at.x, at.y, { shiftKey });
+      flushFrames();
+    };
+    const active = () => overlay.querySelector('[data-snap-corner-marker="active"]');
+    for (let i = 0; i < 60 && !active(); i++) {
+      hover(false);
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const glyph = active()?.getAttribute('transform');
+    assert.equal(glyph, `translate(${at.x} ${at.y})`);
+    return { at, hover, active, glyph, overlay, renderer };
+  }
+
+  it('#11746 Escape clears the mounted Measure corner markers until the next hover', async t => {
+    const { canvas, ctx } = mount();
+    click(canvas, 0, 300);
+    assert.equal(xy(s().activeMeasurement?.start), '0,0');
+    const { renderer, hover, active, glyph, overlay } = await cornerScene(t, canvas, ctx);
+    assert.equal(xy(s().snapTarget?.position), '2,1');
+    await pressEscape();
+    assert.equal(s().activeTool, 'measure');
+    assert.equal(s().snapTarget, null);
+    assert.equal(s().snapVisualization, null);
+    assert.equal(overlay.querySelectorAll('[data-snap-corner-marker]').length, 0);
+    assert.equal(renderer.cornerMarkers.get(), null);
+    await new Promise(resolve => setTimeout(resolve, ctx.HOVER_SNAP_THROTTLE_MS + 1));
+    hover(false);
+    assert.equal(xy(s().snapTarget?.position), '2,1');
+    assert.equal(active()?.getAttribute('transform'), glyph);
+  });
+
+  for (const [authored, distance, candidate, snapped] of [
+    [false, 9.9, true, true], [false, 11, true, false], [false, 45, true, false],
+    [true, 45, true, true], [true, 47.9, true, true], [true, 49, false, true],
+    [true, 60, false, true], [true, 61, false, false],
+  ] as const) {
+    it(`#11746 background Measure hover and click at ${distance}px (authored endpoint ${authored})`, async t => {
+      const { canvas, ctx } = mount();
+      const { renderer, at, overlay } = await cornerScene(t, canvas, ctx, authored);
+      const x = at.x - distance;
+      assert.equal(renderer.raycastScene(x, at.y), null);
+      await new Promise(resolve => setTimeout(resolve, ctx.HOVER_SNAP_THROTTLE_MS + 1));
+      fire(canvas, 'pointermove', x, at.y);
+      flushFrames();
+      const glyph = overlay.querySelector(`[transform="translate(${at.x} ${at.y})"]`);
+      const highlight = glyph?.getAttribute('data-snap-corner-marker');
+      const hoverPoint = xy(s().snapTarget?.position);
+      click(canvas, x, at.y);
+      assert.equal(xy(s().activeMeasurement?.start), snapped ? '2,1' : 'none');
+      assert.equal(hoverPoint, xy(s().activeMeasurement?.start));
+      assert.equal(!!glyph, candidate);
+      assert.equal(highlight === 'active', candidate && snapped);
+    });
+  }
+
+  it('#11746 the Shift-constrained endpoint retains nearby corners and highlights only a matching vertex', async t => {
+    const { canvas, ctx } = mount();
+    click(canvas, 0, 300);
+    assert.equal(xy(s().activeMeasurement?.start), '0,0');
+
+    const { at, hover, active, glyph, overlay } = await cornerScene(t, canvas, ctx);
+    assert.equal(xy(s().activeMeasurement?.current), '2,1');
+    const count = () => overlay.querySelectorAll('[data-snap-corner-marker]').length;
+    const nearby = count();
+    assert.ok(nearby >= 2);
+    hover(true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,0');
+    assert.equal(count(), nearby);
+    assert.ok(!active(), 'the measured endpoint is one metre below the vertex');
+    hover(false);
+    assert.equal(xy(s().activeMeasurement?.current), '2,1');
+    assert.equal(active()?.getAttribute('transform'), glyph);
+    fire(canvas, 'pointerdown', at.x, at.y, { shiftKey: true });
+    fire(canvas, 'pointerup', at.x, at.y, { shiftKey: true });
+    assert.equal(xy(s().measurements.at(-1)?.end), '2,0');
+    assert.ok(!active(), 'release also reconciles the freshly picked vertex');
+    assert.equal(count(), nearby);
+  });
+
+  it('#11746 an unconstrained release on the adjacent face demotes the starting corner', async t => {
+    const { canvas, ctx } = mount();
+    const { at, active, overlay, renderer } = await cornerScene(t, canvas, ctx);
+    // Both clicks snap to this vertex, but the second is a distinct press on its face.
+    click(canvas, at.x - 6, at.y);
+    assert.equal(xy(s().activeMeasurement?.start), '2,1');
+    const x = at.x + 5, y = at.y - 3;
+    fire(canvas, 'pointermove', x, y);
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2,1');
+    assert.ok(active());
+    const count = () => overlay.querySelectorAll('[data-snap-corner-marker]').length;
+    const nearby = count();
+    assert.ok(nearby >= 2);
+    const surface = renderer.raycastScene(x, y)?.intersection.point;
+    assert.ok(surface && surface.x > 2 && surface.y > 1);
+    click(canvas, x, y);
+    const end = s().measurements.at(-1)?.end;
+    assert.ok(end);
+    assert.deepEqual([end.x, end.y, end.z], [surface.x, surface.y, surface.z]);
+    assert.equal(count(), nearby);
+    assert.ok(!active(), 'the committed surface point differs from the magnetic vertex');
+
+    const other = renderer.getCamera().projectToScreen({ x: 3, y: 1, z: 0 }, 800, 600)!;
+    click(canvas, other.x, other.y);
+    click(canvas, at.x, at.y);
+    assert.equal(xy(s().measurements.at(-1)?.end), '2,1');
+    assert.equal(active()?.getAttribute('transform'), `translate(${at.x} ${at.y})`);
+  });
+
+  it('#11746 a reduced Measure hover drops markers from the previous full pick', () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    const channel = new Renderer(canvas).cornerMarkers;
+    Object.assign(ctx.renderer, { cornerMarkers: channel });
+    channel.set({ viewKey: 'fixed', activeIndex: 0, candidates: [{
+      expressId: 42, position: { x: 2, y: 0, z: 0 }, screen: { x: 200, y: 300 }, distancePx: 0,
+    }] });
+    ctx.lastMeasureRaycastDurationRef.current = 1e6;
+    fire(canvas, 'pointermove', 500, 250);
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '5,0');
+    assert.equal(channel.get(), null);
   });
 
   it('after a slow frame, a reduced pick that misses within the full snap reach keeps the corner a click would measure', () => {

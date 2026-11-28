@@ -13,6 +13,7 @@
  * A commit runs through `runTransaction`, so it is one undo step.
  */
 
+import { getGlobalRenderer } from '@/lib/renderer-ref';
 import { isGeometryRestoreHeld } from '@/lib/pick-gating';
 import { useSyncExternalStore } from 'react';
 import { toast } from '@/components/ui/toast';
@@ -143,6 +144,7 @@ export function endCommandRuntime(): void {
   unbindKeys = null;
   store = null;
   hooks = null;
+  if (state.command) getGlobalRenderer()?.cornerMarkers?.set(null);
   if (state !== IDLE) publish(IDLE);
 }
 

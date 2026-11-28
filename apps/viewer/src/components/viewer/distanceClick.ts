@@ -16,6 +16,7 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 import { measureSnapOptions, pickMeasurePoint } from './measurePick.js';
 import { cancelQueuedHover } from './measurePointMode.js';
+import { alignCornerHighlight } from '@/lib/snap/corner-assist';
 import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 import { forgetVertexPress, rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { noteMeasureCursor } from './measureCursor.js';
@@ -75,7 +76,10 @@ export function pressOutlivedReset(press: object): boolean {
  * with the command tool's preview, so only a Measure frame is dropped.
  */
 export function resetMeasurePress(ctx: MouseHandlerContext): void {
-  if (ctx.activeToolRef.current === 'measure') cancelQueuedHover(ctx);
+  if (ctx.activeToolRef.current === 'measure') {
+    cancelQueuedHover(ctx);
+    ctx.renderer.cornerMarkers?.set(null);
+  }
   startingPresses.delete(ctx.mouseState);
   deferredStarts.delete(ctx.mouseState);
   queuedReleases.delete(ctx.mouseState); // dropped with the gesture, so none will run
@@ -120,6 +124,7 @@ export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?:
   // measure to the exact surface under the pointer instead of dropping the press (#8788).
   if (at) end = unsnapFromPrevious(ctx, active.start, end, at);
   if (isDuplicateClickPoint(active.start, end)) return false;
+  alignCornerHighlight(ctx.renderer, [end.x, end.y, end.z]);
   ctx.updateMeasurement(end);
   ctx.finalizeMeasurement();
   return true;
@@ -286,6 +291,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
           const start = ctx.activeMeasurementRef.current.start;
           const projected = projectOntoConstraintAxis(start, pos, constraint);
           pos = projected.projectedPos;
+          alignCornerHighlight(renderer, [pos.x, pos.y, pos.z]);
         }
 
         const screenPos = projectToCssScreen(camera, canvas, pos);

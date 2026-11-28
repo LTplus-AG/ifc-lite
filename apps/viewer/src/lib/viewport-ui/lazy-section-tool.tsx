@@ -16,29 +16,10 @@
  * suspends on the load (React's thenable protocol, the same one `lazy` uses).
  */
 
-import { type ComponentType } from 'react';
+import { lazyToolComponent } from './lazy-tool-component';
 
-function lazyComponent(load: () => Promise<ComponentType>): { Component: ComponentType; ready: () => Promise<void> } {
-  let loaded: ComponentType | null = null;
-  let pending: Promise<ComponentType> | null = null;
-  const start = (): Promise<ComponentType> => {
-    pending ??= load().then(
-      (component) => { loaded = component; return component; },
-      (error: unknown) => { pending = null; throw error; }, // a later open tries the network again
-    );
-    return pending;
-  };
-  const Component: ComponentType = () => {
-    const started = start();
-    if (!loaded) throw started;
-    const Loaded = loaded;
-    return <Loaded />;
-  };
-  return { Component, ready: async () => { await start(); } };
-}
-
-const bar = lazyComponent(() => import('@/components/viewer/tools/SectionToolbar').then((m) => m.SectionToolbar));
-const scene = lazyComponent(() => import('@/components/viewer/tools/SectionPanel').then((m) => m.SectionOverlay));
+const bar = lazyToolComponent(() => import('@/components/viewer/tools/SectionToolbar').then((m) => m.SectionToolbar));
+const scene = lazyToolComponent(() => import('@/components/viewer/tools/SectionPanel').then((m) => m.SectionOverlay));
 
 export const SectionBar = bar.Component;
 export const SectionScene = scene.Component;

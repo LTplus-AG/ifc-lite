@@ -89,7 +89,15 @@ export function LocalTab() {
     [t, revision, role, before, reference, models, hidden, isolated, instanceRevision],
   );
 
-  if (!repositionOpen || !runtime) {
+  if (repositionOpen && !runtime) {
+    return (
+      <Button size="sm" variant="outline" aria-label={t('repositionPanel.cancelAriaLabel')} onClick={() => useViewerStore.getState().closeReposition()}>
+        {t('repositionPanel.cancelButton')}
+      </Button>
+    );
+  }
+
+  if (!runtime || !repositionOpen) {
     return (
       <div className="flex flex-col gap-2 text-xs">
         <p className="text-2xs uppercase tracking-wider text-muted-foreground">{t('placementPanel.local.emptyTitle')}</p>

@@ -48,6 +48,7 @@ import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast } from './measureHandlers.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { alignCornerHighlight, screenCornerSnapConfig } from '@/lib/snap/corner-assist';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
@@ -137,7 +138,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
   for (let attempt = 0; attempt < MAX_SPACE_ATTEMPTS; attempt++) {
     const pick = ctx.renderer.raycastSceneMagnetic(x, y, {
       edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
-    }, { ...options, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: {} } }) as MeshPick;
+    }, { ...options, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: screenCornerSnapConfig() } }) as MeshPick;
     if (!pick || !construction) return pick;
     const id = pick.snapTarget?.expressId ?? pick.intersection?.expressId;
     if (id === undefined || !isConstructionSpace(id)) return pick;
@@ -160,13 +161,14 @@ function resolveCommandSnap(
   if (!command || !commandCtx) return null;
   const plane = commandCtx.workplane;
   if (!plane) {
+    ctx.renderer.cornerMarkers?.set(null);
     const hit = ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
     if (!hit) return null;
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
   const aim = pointerAim(command, runtime.gesture, plane, ctx.snapEnabledRef.current, mods.altKey);
   const pick = aim === 'snap' ? magneticPick(ctx, command, x, y) : null;
-  if (!pick) ctx.setSnapTarget(null);
+  if (!pick) ctx.renderer.cornerMarkers?.set(null);
   const section = plane.spec.kind === 'section';
   const hit = pick ? pick.intersection : aim === 'surface' && !section ? ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection : null;
   const toLocal = (p: { x: number; y: number; z: number }) => {
@@ -174,7 +176,11 @@ function resolveCommandSnap(
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
   const cursor = section || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
-  if (!cursor) return null;
+  if (!cursor) {
+    ctx.renderer.cornerMarkers?.set(null);
+    ctx.setSnapTarget(null);
+    return null;
+  }
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
   const metresPerPixel = here && beside ? Math.hypot(beside[0] - here[0], beside[1] - here[1]) : 0;
@@ -189,7 +195,9 @@ function resolveCommandSnap(
   ] : [];
   if (aim === 'snap' && plane.spec.kind !== 'section') sources.push(...modelSnapSources(commandCtx.modelId));
   ctx.setSnapTarget(pick?.snapTarget ?? null);
-  return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
+  const solved = solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
+  alignCornerHighlight(ctx.renderer, solved?.render);
+  return solved;
 }
 
 /** A press or a release lands where it is: a preview still queued for this frame is dropped first. */

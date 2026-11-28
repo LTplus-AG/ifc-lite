@@ -1,0 +1,31 @@
+diff --git b/apps/viewer/src/lib/snap/corner-assist.ts a/apps/viewer/src/lib/snap/corner-assist.ts
+index 6bc41e4..74f1301 100644
+--- b/apps/viewer/src/lib/snap/corner-assist.ts
++++ a/apps/viewer/src/lib/snap/corner-assist.ts
+@@ -25,12 +25,12 @@ export interface SnapPickState {
+  * overlay draws only then, and only with snapping on.
+  */
+ export function isSnapPicking(s: Pick<SnapPickState, 'activeTool' | 'repositionPicking'>): boolean {
+-  return s.activeTool === 'measure' || s.activeTool === 'command';
++  return s.activeTool === 'measure' || s.activeTool === 'command' || s.repositionPicking;
+ }
+
+ /** The `screenCornerSnap` option of a pick: the corner search, with markers. */
+ export function screenCornerSnapConfig(): ScreenCornerSnapOptions {
+-  return {};
++  return { markers: true };
+ }
+
+ /** A marker as the overlay draws it. */
+@@ -48,9 +48,9 @@ export interface CornerMarkerView {
+  * last so it is drawn on top.
+  */
+ export function cornerMarkerViews(markers: ScreenCornerMarkers | null, currentViewKey: string | null): CornerMarkerView[] {
+-  if (!markers) return [];
++  if (!markers || currentViewKey === null || markers.viewKey !== currentViewKey) return [];
+   const views = markers.candidates.map((c, i) => ({
+     key: `${i}:${c.expressId}`, x: c.screen.x, y: c.screen.y, active: i === markers.activeIndex,
+   }));
+-  return views;
++  return [...views.filter((v) => !v.active), ...views.filter((v) => v.active)];
+ }

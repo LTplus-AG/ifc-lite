@@ -15,6 +15,7 @@ import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { reprojectMeasurementsForCamera } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { alignCornerHighlight } from '@/lib/snap/corner-assist';
 import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
@@ -153,6 +154,7 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     // Simpler on the Shift axis or after a slow frame; nothing with Snap off (#8995)
     snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced }),
   });
+  if (reduceComplexity && !useOrthogonalConstraint) renderer.cornerMarkers?.set(null);
   let result = pick(reduceComplexity);
 
   // Track raycast duration for adaptive throttling: the first pick's, so the retry below keeps no frame reduced
@@ -180,6 +182,7 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     const start = ctx.activeMeasurementRef.current.start;
     const projected = projectOntoConstraintAxis(start, pos, constraint);
     pos = projected.projectedPos;
+    alignCornerHighlight(renderer, [pos.x, pos.y, pos.z]);
 
     // Update active axis for visualization
     ctx.updateConstraintActiveAxis(projected.activeAxis);
@@ -289,7 +292,7 @@ export function handleMeasureHover(
     }, {
       hiddenIds: ctx.hiddenEntitiesRef.current,
       isolatedIds: ctx.isolatedEntitiesRef.current,
-      snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
+      snapOptions: measureSnapOptions(ctx),
     });
 
     // Update snap target for visual feedback

@@ -26,7 +26,8 @@
  */
 
 import { Suspense, useEffect, type ReactNode } from 'react';
-import { RepositionRuntimeHost } from './reposition/RepositionRuntimeHost';
+import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
+import { lazyToolComponent } from '@/lib/viewport-ui/lazy-tool-component';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -35,6 +36,20 @@ import { TOOL_HUD, isToolId } from '@/lib/viewport-ui/tool-hud-registry';
 import { preloadSectionTool } from '@/lib/viewport-ui/lazy-section-tool';
 import { WorkplaneScene } from './model/WorkplaneScene';
 import { ModelOnboardingHint } from './model/ModelOnboardingHint';
+import { SnapCornerMarkers } from './tools/SnapCornerMarkers';
+
+const { Component: RepositionRuntimeHost, ready: loadRepositionTool } = lazyToolComponent(
+  () => import('./reposition/RepositionRuntimeHost').then(m => m.RepositionRuntimeHost),
+);
+
+export { loadRepositionTool };
+
+function RepositionLoading() {
+  useEffect(() => registerKeyboardCommand('reposition.cancel', () => {
+    useViewerStore.getState().closeReposition();
+  }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay }), []);
+  return null;
+}
 
 export function ToolOverlays(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
@@ -45,7 +60,12 @@ export function ToolOverlays(): ReactNode {
   }, [repositionOpen, activeTool]);
   // The Section tool's code is not in the entry chunk (#7616): fetch it once the browser is idle, so the first open is instant.
   useEffect(() => whenIdle(preloadSectionTool), []);
-  if (repositionOpen && activeTool === 'select') return <RepositionRuntimeHost />;
+  if (repositionOpen && activeTool === 'select') return (
+    <>
+      <Suspense fallback={<RepositionLoading />}><RepositionRuntimeHost /></Suspense>
+      <SnapCornerMarkers />
+    </>
+  );
 
   const entry = isToolId(activeTool) ? TOOL_HUD[activeTool] : undefined;
   return (
@@ -58,6 +78,7 @@ export function ToolOverlays(): ReactNode {
           <Suspense fallback={null}><entry.Bar /></Suspense>
         </HudItem>
       )}
+      <SnapCornerMarkers />
       {entry?.Scene && <Suspense fallback={null}><entry.Scene /></Suspense>}
       {entry?.hint && <ToolHint hint={entry.hint} />}
     </>

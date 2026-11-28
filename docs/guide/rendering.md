@@ -426,6 +426,8 @@ Hidden entities, entities outside the current isolation, and clipped geometry ar
 
 The search builds its screen grid during idle time after the view settles (`settleMs`, default 120 ms), in slices with a default budget of 6 ms (`maxSliceMs`). Picks keep the ordinary ray-based result until a matching screen candidate is available. As pieces enter the grid, their corners and edges become pickable without waiting for the entire scene.
 
+For CAD-style corner markers, pass `screenCornerSnap: { markers: true }` in the magnetic pick's `snapOptions`. Read `renderer.cornerMarkers.get()` after the pick or subscribe with `renderer.cornerMarkers.subscribe(listener)`. The settled view supplies up to `markerLimit` corners (default 12) within `markerRadiusPx` CSS pixels (default 48). Draw each candidate at its `screen` coordinates and highlight `candidates[activeIndex]` when the index is nonnegative. Hide the markers when their `viewKey` differs from `renderer.readbackRaycastViewKey()`.
+
 ### Point-cloud snapping
 
 Point-cloud snapping is produced by `raycastSceneMagnetic` (not

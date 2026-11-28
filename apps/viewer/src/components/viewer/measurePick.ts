@@ -15,22 +15,23 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { useViewerStore } from '@/store';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { screenCornerSnapConfig } from '@/lib/snap/corner-assist';
 
 /**
  * The snap options of every Measure point raycast. With Snap off nothing
  * snaps, Shift included (#8995): the axis constrains the point, an edge or
  * vertex never pulls it, so the raycast can set no edge lock or glyph. On the
  * Shift axis an edge or vertex may pull it before it is projected (no faces);
- * `reduced` drops vertex snap after a slow frame; `radius` overrides the
- * 60px pull (the hover preview uses 40px).
+ * `reduced` drops vertex snap after a slow frame. Ordinary hover and click share the 60px pull.
  */
 export function measureSnapOptions(
   ctx: Pick<MouseHandlerContext, 'snapEnabledRef'>,
-  { axis = false, reduced = false, radius }: { axis?: boolean; reduced?: boolean; radius?: number } = {},
+  { axis = false, reduced = false }: { axis?: boolean; reduced?: boolean } = {},
 ): Partial<SnapOptions> {
   if (!ctx.snapEnabledRef.current) return { snapToVertices: false, snapToEdges: false, snapToFaces: false, screenSnapRadius: 0 };
-  if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40, screenCornerSnap: {} };
-  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: radius ?? (reduced ? 40 : 60), ...(reduced ? {} : { screenCornerSnap: {} }) };
+  const corner = screenCornerSnapConfig();
+  if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40, screenCornerSnap: corner };
+  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: reduced ? 40 : 60, ...(reduced ? {} : { screenCornerSnap: corner }) };
 }
 
 /**

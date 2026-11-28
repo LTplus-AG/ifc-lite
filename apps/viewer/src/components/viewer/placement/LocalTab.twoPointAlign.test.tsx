@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import type { Renderer } from '@ifc-lite/renderer';
+import { Renderer } from '@ifc-lite/renderer';
 import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
 import { setGlobalRendererRef } from '@/lib/renderer-ref';
 import { render, cleanup, click, press, type } from '@/test/render';
@@ -23,6 +23,9 @@ import type { Translation } from '@/lib/model-placement/translation';
 import { ToolOverlays } from '../ToolOverlays';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { LocalTab } from './LocalTab';
+
+// These interactions start with the Reposition runtime already available.
+await import('../ToolOverlays').then(m => m.loadRepositionTool?.());
 
 let runtime: RepositionRuntime | null = null;
 function Probe() { runtime = useRepositionRuntime(); return null; }
@@ -277,6 +280,7 @@ describe('two-point align panel (#11505)', () => {
   it('discards a pressed point if placement changes before the click completes', () => {
     const canvas = document.createElement('canvas');
     setGlobalRendererRef({ current: {
+      cornerMarkers: new Renderer(canvas).cornerMarkers,
       getCanvas: () => canvas,
       getScene: () => ({ getInstancedEntityIds: () => [] }),
       getModelPlacementBounds: () => null,

@@ -23,6 +23,9 @@ import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { HomeTab } from '../ribbon/tabs/HomeTab';
 import { LocalTab } from './LocalTab';
 
+// These interactions start with the Reposition runtime already available.
+await import('../ToolOverlays').then(m => m.loadRepositionTool?.());
+
 function WithPlacementSync({ renderer }: { renderer: Renderer }) {
   useModelPlacementSync({ current: renderer }, true, new Map([['ifc', 0], ['scan', 1]]), null);
   return <><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>;

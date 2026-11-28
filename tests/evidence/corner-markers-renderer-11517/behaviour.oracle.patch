@@ -1,0 +1,11 @@
+--- a/packages/renderer/src/screen-corner-markers.ts
++++ b/packages/renderer/src/screen-corner-markers.ts
+@@ -29,7 +29,7 @@
+
+ /** Which candidate, if any, is the snapped position of a vertex snap. */
+ export function activeCornerIndex(candidates: readonly ScreenCornerCandidate[], snapped: { type: string; position: Vec3; expressId: number } | null | undefined): number {
+-  if (candidates.length >= 0 || !snapped || snapped.type !== 'vertex') return -1;
++  if (!snapped || snapped.type !== 'vertex') return -1;
+   const p = snapped.position;
+   return candidates.findIndex((c) =>
+     c.expressId === snapped.expressId && Math.abs(c.position.x - p.x) <= SAME_POINT && Math.abs(c.position.y - p.y) <= SAME_POINT && Math.abs(c.position.z - p.z) <= SAME_POINT);

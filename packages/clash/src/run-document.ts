@@ -284,7 +284,9 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
 
   const coverage: ClashRunCoverage[] = (result.ruleCoverage ?? []).map((entry) => {
     let examined: ClashRunCoverage['examined'] = null;
-    if (entry.matchedElements && entry.matchedKeysA) {
+    // A two-sided rule (matchedB not null) needs its side-B keys too; without them it is unknown, not a self-clash.
+    const sidesRecorded = entry.matchedKeysA !== undefined && (entry.matchedB === null || Array.isArray(entry.matchedKeysB));
+    if (entry.matchedElements && entry.matchedKeysA && sidesRecorded) {
       const keysA = new Set(entry.matchedKeysA);
       const keysB = entry.matchedKeysB ? new Set(entry.matchedKeysB) : null;
       const slotsOfKey = new Map<string, Set<string>>();

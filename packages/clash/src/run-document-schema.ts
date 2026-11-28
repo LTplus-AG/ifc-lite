@@ -244,6 +244,13 @@ function consistencyErrors(doc: ClashRunDocument): string[] {
 export function validateClashRunDocument(value: unknown): ClashRunValidation {
   const errors: string[] = [];
   documentCheck(value, '$', errors);
-  if (errors.length === 0) errors.push(...consistencyErrors(value as ClashRunDocument));
+  // Consistency is checked even when the shape is wrong, so one pass names every failing path. A part
+  // malformed enough to stop it (e.g. `findings` not an array) is already named by the shape errors.
+  try {
+    errors.push(...consistencyErrors(value as ClashRunDocument));
+  } catch (err) {
+    if (errors.length === 0) throw err;
+    errors.push(`$: consistency checks stopped at a malformed part (${err instanceof Error ? err.message : String(err)})`);
+  }
   return errors.length === 0 ? { ok: true, document: value as ClashRunDocument } : { ok: false, errors };
 }

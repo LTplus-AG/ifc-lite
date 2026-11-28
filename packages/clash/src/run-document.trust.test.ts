@@ -93,6 +93,31 @@ describe('validateClashRunDocument: consistency of an untrusted document', () =>
   });
 });
 
+describe('validator and coverage edge cases', () => {
+  it('names shape and consistency errors in one pass', () => {
+    const doc = roundTrip(build({ result: result([clash('D1', 'W1')], ['D1'], ['W1']) }));
+    doc.manifest.slots[0].sha256 = 'not-a-sha';
+    doc.findings[0].a.slot = 'ghost';
+    const res = validateClashRunDocument(doc);
+    expect(res.ok ? [] : res.errors).toEqual(expect.arrayContaining([
+      '$.manifest.slots[0].sha256: expected a lowercase hex sha256 or null',
+      '$.findings[0].a.slot: not in manifest.slots',
+    ]));
+    // Malformed enough that consistency cannot run: still a refusal with the shape error, never a throw.
+    const broken = validateClashRunDocument({ ...doc, findings: 'nope' });
+    expect(broken.ok ? [] : broken.errors).toContain('$.findings: expected an array');
+  });
+
+  it('treats a two-sided rule without side-B keys as unrecorded coverage, not a self-clash', () => {
+    const previous = build({ result: result([clash('D1', 'W1')], ['D1', 'W1'], ['W1']) });
+    const partial = result([], ['D1', 'W1'], ['W1']);
+    delete partial.ruleCoverage![0].matchedKeysB;
+    const next = build({ result: partial });
+    expect(next.manifest.coverage[0].examined).toBeNull();
+    expect(compareClashRunDocuments(previous, next).notComparable.map((e) => e.reasons)).toEqual([['coverage-not-recorded']]);
+  });
+});
+
 describe('exclusions in run documents', () => {
   it('leaves out findings a user rule covers, and never reports them as added or persistent', () => {
     const both = result([clash('D1', 'W1'), clash('D2', 'W2')], ['D1', 'D2'], ['W1', 'W2']);

@@ -17,9 +17,10 @@ Targets the Dalux **API Identities** auth model (legacy API keys expired
 Dalux assigns each customer a node and shows the base URL next to the API key;
 users on another node paste it into the optional `baseUrl` preference. Only the
 node name (`node2`, ...) is kept, and only for `nodeN.field.dalux.com` hosts;
-any other URL is rejected. Relayed requests carry it as a `daluxNode` query
-parameter, and the relay checks it against its own node pattern before
-choosing the upstream host.
+any other URL is rejected. For a non-default node, relayed requests carry it
+as a `daluxNode` query parameter, and the relay checks it against its own
+node pattern before choosing the upstream host. Blank input or `node1` uses
+the default and sends no parameter.
 
 ```bash
 npm install @ifc-lite/source-dalux

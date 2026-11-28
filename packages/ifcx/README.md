@@ -101,7 +101,7 @@ the parsed hierarchy.
 
 - `addIfcxOverlay(baseResult, overlayBuffer, overlayName)` adds one more layer to a `parseFederatedIfcx` result. `parseFederatedIfcx` also takes `maxInheritDepth` (default 10) and `retainOpinions`; with `retainOpinions` the result carries `attributeOpinions`, which `findDivergentAttributes` turns into a list of attributes where layers disagree.
 - `bakeLayers(layers)` composes an ordered layer stack (weakest first) into one flat IFCX document without tombstones.
-- `computeLayerId`, `computeStackHash`, `canonicalizeLayer` and `canonicalStringify` give blake3 content ids over canonical JSON for a layer and for a layer stack.
+- `computeLayerId`, `computeStackHash`, `canonicalizeLayer` and `canonicalStringify` cover content ids. `canonicalStringify` produces canonical JSON text and `canonicalizeLayer` produces canonical layer bytes. `computeLayerId` hashes those bytes with BLAKE3. `computeStackHash` hashes the ordered layer ids joined by newlines.
 - `createProvenanceManifest`, `getProvenance`, `setProvenance` and `validateProvenance` read and write a layer's provenance manifest.
 - Lower-level steps (`composeIfcx`, `extractEntities`, `extractProperties`, `extractGeometry`, `extractPointClouds`, `buildHierarchy`, `LayerStack`, `PathIndex`, `composeFederated`) are exported for callers that build their own pipeline.
 

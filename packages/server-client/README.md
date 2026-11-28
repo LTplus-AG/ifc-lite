@@ -32,8 +32,8 @@ console.log(`${result.metadata.entity_count} entities, ${result.meshes.length} m
 ```
 
 `ServerConfig` also takes `timeout` (milliseconds, default 300000) and
-`token`. A `token` is sent as `Authorization: Bearer <token>` on every
-request; pass it when the server sets `IFC_SERVER_API_TOKEN`, which makes its
+`token`. A configured `token` is sent as `Authorization: Bearer <token>` on parse
+and cache requests; `health()` sends no token. Pass it when the server sets `IFC_SERVER_API_TOKEN`, which makes its
 parse and cache routes reject unauthenticated calls.
 
 ## Stream a large file

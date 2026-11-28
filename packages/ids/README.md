@@ -61,7 +61,7 @@ import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
 const idsSpec = parseIDS(idsXml);
 const de = createTranslationService('de');
 const report = await validateIDS(idsSpec, accessor, modelInfo, { translator: de });
-// translator.describeFailure(req) now reads, for example:
+// A property failure's failureReason is now translated, for example:
 // 'Eigenschaft "FireRating" nicht in "Pset_DoorCommon" gefunden'
 ```
 

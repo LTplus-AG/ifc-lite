@@ -157,7 +157,9 @@ IFC2X3 evaluation is intentionally unsupported.
   and `releaseSpareParserWorker`. It uses bundler worker imports, so it is browser-only.
 - `@ifc-lite/parser/structural-glyphs` exports `structuralGlyphs(store, extraction)`,
   which turns the supports and loads of an `extractStructuralOnDemand()` result into a
-  plain-data glyph list (position, direction, kind, magnitude, source entity).
+  plain-data glyph list. Every glyph carries a kind, position and source entity.
+  Supports, forces and moments carry a direction, displacements may carry one,
+  and forces and moments also carry a magnitude.
 
 ## Performance
 

@@ -116,10 +116,11 @@ Notes:
   worker, so a COPC file can open (header and hierarchy) and then fail on
   its first `readNode`. If you need LAZ or COPC from the published package,
   pass a custom `spawn` callback that yields a worker capable of fetching
-  the wasm (see `DecodeWorkerOptions.spawn`). All streaming and COPC
-  sources share one decode worker per page, and the first source opened
-  picks it: pass your `spawn` to that first opener, because a `spawn` given
-  later is ignored while the shared worker is alive.
+  the wasm (see `DecodeWorkerOptions.spawn`). `createDecodeWorkerSource`
+  and `openCopcWorkerReader` share one decode worker per page, and the first
+  call that acquires it picks it: pass your `spawn` to that first call,
+  because a `spawn` given later is ignored while the shared worker is alive.
+  Sources that decode in process, such as `LasStreamingSource`, do not use it.
 - Strict CSPs need `script-src 'self' blob:` to allow the `Blob`-URL
   worker.
 

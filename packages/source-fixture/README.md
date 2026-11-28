@@ -97,8 +97,11 @@ provider — not just this fixture:
   file's `containerId` names a container the provider also returns;
 - paging terminates, never repeats an item, and following cursors to
   exhaustion reconstructs the same set as one large page;
-- `download` honors `revisionId`, reports progress that only increases and
-  ends at the byte length, and rejects promptly on an already-aborted signal;
+- `download` reports progress that only increases and ends at the byte
+  length, and rejects promptly on an already-aborted signal. When the fixture
+  supplies a file with revisions and the provider advertises both
+  `revisionHistory` and `downloadHistoricalRevisions`, distinct `revisionId`
+  values must also yield different bytes;
 - optional methods are present if and only if the matching capability is
   `true`;
 - `watchRevisions` returns a well-formed result, and — for a **polling**

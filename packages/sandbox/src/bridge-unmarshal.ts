@@ -41,7 +41,7 @@ const DECODER_SOURCE = `(() => {
   const toString = String;
   const cycle = emptyRecord(null);
   const maxNodes = 1_000_000;
-  return (value, maxDepth, describeError, allowCyclicConsoleValue) => {
+  return (value, maxDepth, describeError, consoleMode) => {
     if (describeError) {
       const message = value != null ? value.message : undefined;
       const reason = message === undefined ? value : message;
@@ -78,7 +78,10 @@ const DECODER_SOURCE = `(() => {
       let projected = typeof hook === 'function' ? apply(hook, input, [key]) : input;
       const array = projected !== null && typeof projected === 'object' && isArray(projected);
       if (!array && projected !== null && typeof projected === 'object') projected = unbox(projected);
-      if (typeof projected === 'bigint') throw new TypeError('Sandbox value contains a BigInt');
+      if (typeof projected === 'bigint') {
+        if (consoleMode) return '[BigInt]';
+        throw new TypeError('Sandbox value contains a BigInt');
+      }
       if (typeof projected === 'function' || typeof projected === 'symbol') return undefined;
       if (projected === null || typeof projected !== 'object') return projected;
 
@@ -119,7 +122,7 @@ const DECODER_SOURCE = `(() => {
       const result = snapshot(value, '', 0);
       return stringify(result === undefined && typeof value === 'function' ? functionSource(value) : result);
     } catch (error) {
-      if (error === cycle && allowCyclicConsoleValue) return stringify('[object Object]');
+      if (error === cycle && consoleMode) return stringify('[object Object]');
       throw error;
     }
   };
@@ -134,12 +137,12 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
   // Initialization runs against a fresh realm with trusted source.
   const decoder = vm.unwrapResult(vm.evalCode(DECODER_SOURCE));
 
-  function read(handle: QuickJSHandle, depth: number, describeError: boolean, allowCyclicConsoleValue = false): string | undefined {
+  function read(handle: QuickJSHandle, depth: number, describeError: boolean, consoleMode = false): string | undefined {
     const limit = vm.newNumber(depth);
     try {
       const result = vm.callFunction(
         decoder, vm.undefined, handle, limit,
-        describeError ? vm.true : vm.false, allowCyclicConsoleValue ? vm.true : vm.false,
+        describeError ? vm.true : vm.false, consoleMode ? vm.true : vm.false,
       );
       if (result.error) {
         result.error.dispose();
@@ -160,7 +163,7 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
   function decode(
     handle: QuickJSHandle,
     depth = maxDepth,
-    allowCyclicConsoleValue = false,
+    consoleMode = false,
     rejectAsError = false,
   ): unknown {
     const type = vm.typeof(handle);
@@ -181,7 +184,7 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
         try {
           if (depth === 0) throw new Error(`Sandbox value exceeds decoding depth (depth limit ${maxDepth})`);
           if (state.type === 'rejected' && rejectAsError) throw new Error(describeError(settled));
-          const decoded = decode(settled, depth - 1, allowCyclicConsoleValue);
+          const decoded = decode(settled, depth - 1, consoleMode);
           return state.type === 'rejected'
             ? { type: 'rejected', error: decoded }
             : { type: 'fulfilled', value: decoded };
@@ -191,7 +194,7 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
       }
     }
 
-    const json = read(handle, depth, false, allowCyclicConsoleValue);
+    const json = read(handle, depth, false, consoleMode);
     return json === undefined ? undefined : JSON.parse(json);
   }
 

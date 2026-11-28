@@ -368,13 +368,13 @@ export class Sandbox {
         }
       };
 
-      const durationMs = Date.now() - this.evalStartTime;
+      const elapsedMs = () => Date.now() - this.evalStartTime;
       if (this.interrupted) {
-        throw new ScriptError('interrupted', bridge.logs, durationMs);
+        throw new ScriptError('interrupted', bridge.logs, elapsedMs());
       }
       if (result.error) {
         const message = describeError(result.error);
-        throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, durationMs);
+        throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, elapsedMs());
       }
 
       // Job draining cannot surface rejections captured in the returned promise.
@@ -385,14 +385,14 @@ export class Sandbox {
         value = decoder.decodeResult(result.value);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, durationMs);
+        throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, elapsedMs());
       }
 
       if (this.interrupted) {
-        throw new ScriptError('interrupted', bridge.logs, durationMs);
+        throw new ScriptError('interrupted', bridge.logs, elapsedMs());
       }
       const surfaces = bridge.takeSurfaces();
-      return { value, logs: [...bridge.logs], durationMs, ...(surfaces && { surfaces }) };
+      return { value, logs: [...bridge.logs], durationMs: elapsedMs(), ...(surfaces && { surfaces }) };
     } finally {
       // Disarm the deadline before teardown so it cannot affect later runs.
       this.evalStartTime = 0;

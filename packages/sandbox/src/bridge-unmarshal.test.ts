@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { BimContext } from '@ifc-lite/sdk';
 import { createSandbox } from './sandbox.js';
 
-function stubSdk(): { sdk: BimContext; received: unknown[] } {
+function stubSdk(onExport?: () => void): { sdk: BimContext; received: unknown[] } {
   const received: unknown[] = [];
   const sdk = {
-    export: { csv: (refs: unknown, options: unknown) => { received.push([refs, options]); return ''; } },
+    export: { csv: (refs: unknown, options: unknown) => { received.push([refs, options]); onExport?.(); return ''; } },
   } as unknown as BimContext;
   return { sdk, received };
 }
@@ -62,14 +62,15 @@ describe('bounded sandbox decoding (#11600)', () => {
     try {
       const result = await sandbox.eval(`
         let reads = 0;
+        let calls = 0;
         const child = { name: 'wall', get toJSON() {
           reads++;
-          return function (key) { return this.name + ':' + key; };
+          return function (key) { calls++; return this.name + ':' + key; };
         }};
         ({ child });
       `, { typescript: false });
       expect(result.value).toEqual({ child: 'wall:child' });
-      expect((await sandbox.eval('reads', { typescript: false })).value).toBe(1);
+      expect((await sandbox.eval('[reads, calls]', { typescript: false })).value).toEqual([1, 1]);
     } finally {
       sandbox.dispose();
     }
@@ -123,6 +124,45 @@ describe('bounded sandbox decoding (#11600)', () => {
       await expect(sandbox.eval('console.log({ child: value })', { typescript: false }))
         .rejects.toThrow(/depth limit 1/);
     } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('keeps logging nested BigInt values without relaxing the decoder', async () => {
+    const { sdk, received } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 2 } });
+    try {
+      const result = await sandbox.eval('console.log({ count: 1n, label: "wall" }); 42;', { typescript: false });
+      expect(result.value).toBe(42);
+      expect(result.logs[0]?.args).toEqual([{ count: '[BigInt]', label: 'wall' }]);
+      await expect(sandbox.eval('console.log({ count: 1n, child: { leaf: { value: 1 } } })', {
+        typescript: false,
+      })).rejects.toThrow(/depth limit 2/);
+      await expect(sandbox.eval('bim.export.csv([], { count: 1n })', { typescript: false }))
+        .rejects.toThrow(/could not be decoded/);
+      expect(received).toEqual([]);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it.each([false, true])('includes decoding in elapsed time when a getter throws = %s', async (throws) => {
+    let now = 1_000;
+    const { sdk } = stubSdk(() => { now += 25; });
+    const sandbox = await createSandbox(sdk);
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const result = sandbox.eval(`({ get leaf() {
+        bim.export.csv([], {});
+        ${throws ? 'throw new Error("example");' : 'return 1;'}
+      } })`, { typescript: false });
+      if (throws) {
+        await expect(result).rejects.toMatchObject({ durationMs: 25 });
+      } else {
+        await expect(result).resolves.toMatchObject({ value: { leaf: 1 }, durationMs: 25 });
+      }
+    } finally {
+      clock.mockRestore();
       sandbox.dispose();
     }
   });

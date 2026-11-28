@@ -11,7 +11,9 @@
 
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { findPropertyInSets } from '@ifc-lite/query';
-import { firstNonBlank, isBlank } from '../output.js';
+const isBlank = (value: string | undefined | null): boolean => value == null || value.trim() === '';
+const firstNonBlank = (...values: Array<string | undefined | null>): string | undefined =>
+  values.find((value): value is string => !isBlank(value));
 
 export interface QuantitySet {
   name: string;

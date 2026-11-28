@@ -31,6 +31,11 @@
       "types": "./dist/headless.d.ts",
       "import": "./dist/headless.js",
       "default": "./dist/headless.js"
+    },
+    "./headless/delivery": {
+      "types": "./dist/headless/delivery.d.ts",
+      "import": "./dist/headless/delivery.js",
+      "default": "./dist/headless/delivery.js"
     }
   },
   "scripts": {
@@ -42,6 +47,7 @@
   "dependencies": {
     "@ifc-lite/a2ui": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
+    "@ifc-lite/cache": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/create": "workspace:^",
     "@ifc-lite/data": "workspace:^",
@@ -57,6 +63,7 @@
     "@ifc-lite/mutations": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
+    "@ifc-lite/rules": "workspace:^",
     "@ifc-lite/spatial": "workspace:^"
   },
   "devDependencies": {

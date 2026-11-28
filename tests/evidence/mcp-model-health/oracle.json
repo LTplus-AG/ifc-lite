@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Remove model_stats from tool registration so the MCP health test must reject losing the statistics tool.",
+  "key": "packages/mcp/src/tools/model-health.ts",
+  "mutation": "tests/evidence/mcp-model-health/stats-registration.oracle.patch",
+  "test": "packages/mcp/src/tools/model-health.test.ts"
+}

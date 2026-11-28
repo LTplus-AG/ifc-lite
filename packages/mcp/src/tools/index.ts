@@ -15,6 +15,7 @@ import { bcfTools } from './bcf.js';
 import { bcfPublicationTools } from './bcf-publication.js';
 import { bsddTools } from './bsdd.js';
 import { diffTools } from './diff.js';
+import { modelHealthTools } from './model-health.js';
 import { exportTools } from './export.js';
 import { viewerTools } from './viewer.js';
 import { draftLayerTools } from './layer.js';
@@ -47,6 +48,7 @@ export {
   bsddTools,
   diffTools,
   exportTools,
+  modelHealthTools,
   viewerTools,
   costTools,
   structuralTools,
@@ -77,6 +79,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(bsddTools);
   registry.registerAll(diffTools);
   registry.registerAll(exportTools);
+  registry.registerAll(modelHealthTools);
   registry.registerAll(viewerTools);
   registry.registerAll(costTools);
   registry.registerAll(structuralTools);

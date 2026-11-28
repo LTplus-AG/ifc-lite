@@ -14,3 +14,6 @@ export type { HeadlessModelSession, OpenModelOptions } from './headless/session.
 export { UnsupportedOperationError } from './headless/capabilities.js';
 export type { HeadlessOperation, HeadlessCapability } from './headless/capabilities.js';
 export { configureSourceMutationView } from './headless/mutation-base.js';
+
+export { computeModelStats } from './headless/model-stats.js';
+export { filterBuildingElements } from './headless/stats-aggregation.js';

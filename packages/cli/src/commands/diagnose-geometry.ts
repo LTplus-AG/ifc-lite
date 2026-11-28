@@ -17,33 +17,17 @@
  * per-product rows are shown/printed).
  */
 import { writeFile } from 'node:fs/promises';
-import { GeometryProcessor, type GeometryDiagnostics } from '@ifc-lite/geometry';
+import { readGeometryDiagnostics, filterWorstHosts } from '@ifc-lite/export';
+export { filterWorstHosts };
 import { getFlag, hasFlag, fatal } from '../output.js';
 import { logger } from '../logger.js';
 import { loadIfcBytes } from '../loader.js';
 import { readModelInput } from '../model-input.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 
-type WorstHost = GeometryDiagnostics['worstHosts'][number];
-
 /** True for a bare STEP express ID ("42"), false for a GlobalId ("0YvCT2..."). */
 export function isExpressId(raw: string): boolean {
   return /^\d+$/.test(raw);
-}
-
-/**
- * Narrow the bounded `worstHosts` list to a single product and/or IFC type.
- * Pure so it's directly unit-testable without a wasm/model round-trip.
- */
-export function filterWorstHosts(
-  hosts: WorstHost[],
-  opts: { productId?: number; ifcType?: string },
-): WorstHost[] {
-  return hosts.filter((h) => {
-    if (opts.productId !== undefined && h.productId !== opts.productId) return false;
-    if (opts.ifcType && h.ifcType !== opts.ifcType) return false;
-    return true;
-  });
 }
 
 export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
@@ -62,37 +46,29 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
 
   const { bytes, label } = await readModelInput(filePath);
 
-  const gp = new GeometryProcessor();
-  let diag: ReturnType<typeof gp.diagnoseGeometry>;
-  try {
-    await gp.init();
-    diag = gp.diagnoseGeometry(bytes);
-
-    if (diag && (productArg !== undefined || typeArg !== undefined)) {
-      let productId: number | undefined;
-      if (productArg !== undefined) {
-        if (isExpressId(productArg)) {
-          productId = parseInt(productArg, 10);
-        } else {
-          // GlobalId: resolve via the columnar parser's entity table (the wasm
-          // diagnostics pass never surfaces GlobalIds, only express IDs). Parse
-          // the bytes ALREADY in memory rather than re-reading the file from disk
-          // — the geometry pass above already loaded them, so this avoids a
-          // redundant disk read (the wasm IfcAPI exposes no GlobalId lookup, so a
-          // columnar parse is still required to map GlobalId → expressId).
-          const store = await loadIfcBytes(bytes, label);
-          const resolved = store.entities.getExpressIdByGlobalId(productArg);
-          if (resolved === -1) {
-            fatal(`--product: no entity found with GlobalId "${productArg}"`);
-            return;
-          }
-          productId = resolved;
+  let diag = await readGeometryDiagnostics(bytes);
+  if (diag && (productArg !== undefined || typeArg !== undefined)) {
+    let productId: number | undefined;
+    if (productArg !== undefined) {
+      if (isExpressId(productArg)) {
+        productId = parseInt(productArg, 10);
+      } else {
+        // GlobalId: resolve via the columnar parser's entity table (the wasm
+        // diagnostics pass never surfaces GlobalIds, only express IDs). Parse
+        // the bytes ALREADY in memory rather than re-reading the file from disk
+        // — the geometry pass above already loaded them, so this avoids a
+        // redundant disk read (the wasm IfcAPI exposes no GlobalId lookup, so a
+        // columnar parse is still required to map GlobalId → expressId).
+        const store = await loadIfcBytes(bytes, label);
+        const resolved = store.entities.getExpressIdByGlobalId(productArg);
+        if (resolved === -1) {
+          fatal(`--product: no entity found with GlobalId "${productArg}"`);
+          return;
         }
+        productId = resolved;
       }
-      diag = { ...diag, worstHosts: filterWorstHosts(diag.worstHosts, { productId, ifcType: typeArg }) };
     }
-  } finally {
-    gp.dispose();
+    diag = { ...diag, worstHosts: filterWorstHosts(diag.worstHosts, { productId, ifcType: typeArg }) };
   }
 
   if (asJson || outPath) {

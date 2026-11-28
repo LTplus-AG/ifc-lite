@@ -40,6 +40,7 @@ import {
   type Drawing2D,
   type GraphicOverrideRule,
 } from '@ifc-lite/drawing-2d';
+import { PropertyValueType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { fixtureModel } from '@/test/store-fixture';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
@@ -238,6 +239,35 @@ describe('Drawing2DCanvas live-canvas property overrides (#3523 gap: the export 
         `the base rule's fill colour "#AAAAAA" should have lost to the higher-priority FireRating rule; got ${JSON.stringify(stub.fillStyleCalls)}`,
       );
     } finally {
+      stub.restore();
+    }
+  });
+
+  it('draws the parsed, edited, and deleted FireRating with an attached view (#11640)', () => {
+    const previous = useViewerStore.getState();
+    const store = previous.ifcDataStore!;
+    const view = new MutablePropertyView(null, 'wall');
+    const model = { ...fixtureModel('wall'), maxExpressId: 85, ifcDataStore: store };
+    const stub = installCanvasStub();
+    const editedRule = { ...FIRE_RULE, id: 'edited', priority: 300,
+      criteria: propertyCriterion('FireRating', 'equals', 60), style: { fillColor: '#0066FF' } };
+    const draw = () => renderCanvas(new GraphicOverrideEngine([BASE_RULE, FIRE_RULE, editedRule]));
+    try {
+      useViewerStore.setState({ models: new Map([[model.id, model]]), mutationViews: new Map([[model.id, view]]) });
+      draw();
+      assert.ok(stub.fillStyleCalls.includes('#FF0000'), 'untouched source FireRating 120');
+      stub.fillStyleCalls.length = 0;
+      view.setProperty(WALL_EXPRESS_ID, 'Pset_WallCommon', 'FireRating', 60, PropertyValueType.Integer);
+      draw();
+      assert.ok(stub.fillStyleCalls.includes('#0066FF'), `edited FireRating 60: ${stub.fillStyleCalls.join(',')}`);
+      stub.fillStyleCalls.length = 0;
+      view.setOnDemandExtractor(id => store.getProperties(id));
+      assert.ok(view.deleteProperty(WALL_EXPRESS_ID, 'Pset_WallCommon', 'FireRating'));
+      draw();
+      assert.ok(stub.fillStyleCalls.includes('#AAAAAA'), 'explicit deletion restores the base style');
+      assert.ok(!stub.fillStyleCalls.includes('#FF0000'));
+    } finally {
+      act(() => useViewerStore.setState({ models: previous.models, mutationViews: previous.mutationViews, mutationVersion: previous.mutationVersion }));
       stub.restore();
     }
   });

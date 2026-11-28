@@ -69,7 +69,8 @@ export function makePropertiesGetter(
     }
     const store = ref.modelId === 'legacy' ? legacyStore : storeModels.get(ref.modelId)?.ifcDataStore;
     const view = views.get(ref.modelId);
-    const psets = view?.getForEntity(ref.expressId) ?? (store ? extractPropertiesOnDemand(store, ref.expressId) : []);
+    const sourceBase = view && !view.hasPropertyBase() ? store?.getProperties?.bind(store) : undefined;
+    const psets = view?.getForEntity(ref.expressId, sourceBase) ?? (store ? extractPropertiesOnDemand(store, ref.expressId) : []);
     let result: ElementProperties | undefined;
     if (psets.length > 0) {
       result = Object.create(null) as ElementProperties;

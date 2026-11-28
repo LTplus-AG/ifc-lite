@@ -198,11 +198,11 @@ ct('evaluatePr: the Rust half uses the same tested base', () => {
 
 // run(): what each mode posts, over a fake I/O layer and a temporary cache.
 
-const STALE_PR = { number: 5, headRefOid: 'head5', isDraft: false, isCrossRepository: false };
-const FORK_PR = { number: 6, headRefOid: 'head6', isDraft: false, isCrossRepository: true };
+const STALE_PR = { number: 5, headRefOid: 'head5', baseRefName: 'main', isDraft: false, isCrossRepository: false };
+const FORK_PR = { number: 6, headRefOid: 'head6', baseRefName: 'main', isDraft: false, isCrossRepository: true };
 const realCeilings = () => new Map([['bundle', ceilings.get('bundle')]]);
 
-function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {}, remaining = () => 5000, ioOver = {} }) {
+function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {}, remaining = () => 5000, ioOver = {}, baseRef = 'main' }) {
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
   const cachePath = join(dir, 'cache.json');
   if (cacheData) writeFileSync(cachePath, JSON.stringify(cacheData));
@@ -225,7 +225,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
       ...ioOver,
     };
   };
-  const env = { GITHUB_REPOSITORY: 'o/r', CI_BASE_STALE_GATE: gate };
+  const env = { GITHUB_REPOSITORY: 'o/r', CI_BASE_STALE_GATE: gate, GITHUB_BASE_REF: baseRef };
   const log = console.log;
   console.log = () => {};
   const jsonOut = join(dir, 'verdicts.jsonl');
@@ -252,6 +252,26 @@ ct('run: in-run evidence does not read or release statuses (#11350)', () => {
   });
   assert.deepEqual([reads, posts], [[], []]);
   assert.deepEqual(rows.map(row => [row.gateMode, row.verdict]), [['shadow', 'stale']]);
+});
+
+ct('run #11350: all entry points judge main and exclude release and stacked bases', () => {
+  for (const baseRef of ['main', 'release', 'ci/stack-parent', '']) {
+    const main = baseRef === 'main';
+    let judged = 0;
+    const ioOver = {
+      pull: () => ({ head: { sha: 'head5', repo: { full_name: 'o/r' } }, base: { ref: baseRef } }),
+      prFiles: () => { judged += 1; return ['apps/viewer/src/a.ts']; },
+    };
+    const sweep = runFake({ prs: [{ ...STALE_PR, baseRefName: baseRef }], ioOver });
+    const dispatch = runFake({ opts: { mode: 'pr', pr: 5, trigger: 'dispatch' }, ioOver });
+    const inRun = runFake({ opts: { mode: 'in-run', pr: 5, headSha: 'head5', measuredDir: '/does-not-exist/base-stale' }, ioOver, baseRef });
+    assert.equal(judged, main ? 3 : 0, baseRef);
+    for (const result of [sweep, dispatch, inRun]) {
+      assert.equal(result.rows[0].verdict, main ? 'stale' : 'not-relevant', baseRef);
+    }
+    assert.deepEqual(dispatch.posts.map((post) => post.state), ['success'], 'targeted dispatch still releases legacy holds');
+    assert.deepEqual([inRun.reads, inRun.posts], [[], []]);
+  }
 });
 
 ct('run: same-head PRs keep separate evidence with the legacy switch set (#11350)', () => {
@@ -725,6 +745,9 @@ ct('io: a PR file list is refused when the head moves or the PR is retargeted du
   const io = at('h1', 'main');
   assert.deepEqual(io.prFiles(5, 'h1', 'main'), ['rust/core/src/a.rs']);
   assert.deepEqual(io.store.prFiles, { 'h1#5@main': { baseSha: 'b1', files: ['rust/core/src/a.rs'] } });
+  const retargeted = at('h1', 'ci/stack-parent');
+  Object.assign(retargeted.store.prFiles, io.store.prFiles);
+  assert.throws(() => retargeted.prFiles(5, 'h1', 'main', 'b1'), /PR #5 was retargeted to ci\/stack-parent/);
 });
 
 ct('io: an unchanged PR head can change relevance when the base lands its ancestor (#11350)', () => {

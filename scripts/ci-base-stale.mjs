@@ -261,11 +261,11 @@ export function run(opts, env = process.env, makeIo = createIo) {
 
   let targets;
   if (sweep) {
-    targets = candidates.prs.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository, baseRef: 'main' }));
+    targets = candidates.prs.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository, baseRef: p.baseRefName }));
   } else if (opts.mode === 'in-run') {
     // No download (the measurement step failed): fall back to the PR's newest
     // earlier measurement, which the decision then dates honestly.
-    const measured = existsSync(opts.measuredDir)
+    const measured = env.GITHUB_BASE_REF === 'main' && existsSync(opts.measuredDir)
       ? { families: readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort().map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha }
       : null;
     targets = [{ pr: opts.pr, headSha: opts.headSha, fork: Boolean(env.HEAD_REPO) && env.HEAD_REPO !== repo, measured, baseRef: env.GITHUB_BASE_REF || null }];
@@ -306,7 +306,10 @@ export function run(opts, env = process.env, makeIo = createIo) {
       baseRef = pull.base?.ref ?? null;
     }
     const baseSha = baseRef === 'main' && !opts.mainSha ? mainTip : null;
-    const rec = { ...evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null, baseRef, baseSha }), trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
+    const verdict = baseRef === 'main'
+      ? evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null, baseRef, baseSha })
+      : { pr: t.pr, head: headSha, mainTip, testedBase: null, prRun: null, verdict: 'not-relevant', reasons: [baseRef ? `PR targets ${baseRef}; advisory judging applies to main` : "the PR's base branch could not be verified"] };
+    const rec = { ...verdict, trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
     // A verdict the budget cut short is no answer: post nothing, keep the
     // head's old status, and stop the sweep before it spends more.
     const budgetCut = rec.budget === true;

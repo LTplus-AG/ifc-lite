@@ -336,7 +336,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   function queueCandidates(label) {
     spend(`open PRs labelled ${label}`);
     const list = ghCall(
-      ['pr', 'list', '--repo', repo, '--label', label, '--state', 'open', '--base', 'main', '--limit', String(CANDIDATE_LIMIT), '--json', 'number,headRefOid,isDraft,isCrossRepository'],
+      ['pr', 'list', '--repo', repo, '--label', label, '--state', 'open', '--base', 'main', '--limit', String(CANDIDATE_LIMIT), '--json', 'number,headRefOid,isDraft,isCrossRepository,baseRefName'],
       `open PRs labelled ${label}`,
     );
     return candidateList(list);

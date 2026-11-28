@@ -4230,7 +4230,7 @@ jobs:
       # already run the full gate on the merged tree.
       - name: Base-stale verdict (advisory)
         id: base-stale
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/') }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'main' && !startsWith(github.head_ref, 'mergify/merge-queue/') }}
         continue-on-error: true
         timeout-minutes: 3
         env:

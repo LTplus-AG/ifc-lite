@@ -39,11 +39,12 @@ on:
   # From the BASE branch, deliberately: this job never checks out or runs the
   # PR's code. It reads the PR's file list and CI artifacts as data.
   pull_request_target:
+    branches: [main]
     types: [labeled]
   workflow_dispatch:
     inputs:
       pr:
-        description: 'PR number to judge (empty: sweep every labelled PR)'
+        description: 'Main-targeted PR number to judge (empty: sweep labelled PRs targeting main)'
         required: false
         default: ''
 

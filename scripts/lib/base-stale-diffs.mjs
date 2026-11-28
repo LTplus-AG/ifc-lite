@@ -58,14 +58,16 @@ export function createDiffReaders({ repo, cwd, api, git, haveCommit, pull, prFil
       if (!current.base?.ref || !current.base.sha) throw new Error(`PR #${number} has no base revision for its file list`);
       return current.base;
     };
+    let currentBase;
     if (headSha && (!baseRef || !baseSha)) {
-      const base = readRevision();
-      baseRef ??= base.ref;
-      baseSha ??= base.sha;
+      currentBase = readRevision();
+      baseRef ??= currentBase.ref;
+      baseSha ??= currentBase.sha;
     }
     const key = headSha ? `${headSha}#${number}@${baseRef}` : null;
     const cached = key && prFileCache[key];
     if (cached?.baseSha === baseSha && Array.isArray(cached.files)) {
+      if ((currentBase ?? readRevision()).sha !== baseSha) throw new Error(`PR #${number} base advanced while its files were read`);
       stats.cacheHits += 1;
       return cached.files;
     }

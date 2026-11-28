@@ -144,14 +144,17 @@ interface ClashSettings {
   tolerance?: number;              // default touching band (DEFAULT_CLASH_SETTINGS: 0.002 m)
   excludeVoidsAndHosts?: boolean;  // apply `exclusions`; default true
   exclusions?: ExclusionSet;       // pair-exclusion set from an adapter (§5)
-  maxCandidatePairs?: number;      // TS-backend cap per rule — NEVER silent; reported in result.truncated
+  maxCandidatePairs?: number;      // TS-backend cap, one budget for the whole run (each rule gets
+                                   // what is left) — NEVER silent; reported in result.truncated
   signal?: AbortSignal;
   onProgress?: (p: { phase: 'broad'|'narrow'; rule: string; done: number; total: number }) => void;
 }
 
 interface Clash {
-  id: string;                 // stable: clashPairId(ruleId, side A, side B), sides ordered,
-                              // each side `${model} ${key}` (object-identity.ts)
+  id: string;                 // stable: clashPairId(ruleId, side A, side B), sides ordered;
+                              // a side is `${model} ${key}`, or an escaped JSON tuple that adds
+                              // the runtime ref when the key repeats or a field holds `@`/space
+                              // (object-identity.ts)
   a: ClashElementRef;         // { key, ref, model, tag, name?, keyAmbiguous? }
   b: ClashElementRef;
   rule: string;
@@ -193,8 +196,8 @@ interface ClashResult {
 
 Algorithm: **one BVH over set A, queried per element** (`candidatePairs` in `engine-ts/broad.ts`).
 
-- Self-clash (rule with no `b`): build one BVH over the selection and query it with each element's inflated AABB, keeping each pair once (`i < j`).
-- Group pair (A vs B, the common discipline-vs-discipline case): build a BVH over A and query it with each B element's inflated AABB. This enumerates **only cross-group candidate pairs**, never A-A or B-B, and replaces the prototype's `groupA × groupB` double loop.
+- Self-clash (rule with neither `b` nor `membersB`): build one BVH over the selection and query it with each element's inflated AABB, keeping each pair once (`i < j`).
+- Group pair (A vs B, the common discipline-vs-discipline case; a rule is two-sided when it has a `b` selector or a `membersB` set, and an empty B side yields no candidates): build a BVH over A and query it with each B element's inflated AABB. This enumerates **only cross-group candidate pairs**, never A-A or B-B, and replaces the prototype's `groupA × groupB` double loop.
 - Query AABBs are **inflated by a margin** that covers the tolerance and clearance, so clearance candidates are never missed.
 - Pairs of sub-meshes of one object are skipped; entity identity is deduplicated after the narrow phase, keeping the more severe verdict.
 
@@ -210,10 +213,10 @@ The TS reference uses `@ifc-lite/spatial`'s `BVH` (`build` + `queryAABB`); `rust
 
 ### 4.3 Determinism & control
 
-- Pure function of (elements, rules, settings). No `Date.now`/`Math.random` in the core (matches the constraint already enforced in the geometry crate).
+- Pure function of (elements, rules, settings). No `Math.random` in the core, and no clock in any verdict. The TS kernel reads `performance.now()` (falling back to `Date.now()`) only to pace its cooperative yields.
 - Stable ordering: clashes are sorted before return, so re-runs and TS-vs-WASM agree.
 - `AbortSignal` + `onProgress` for large runs. The TS backend checks the signal every 256 candidate pairs and yields about every 50 ms; the WASM backend runs a whole rule in one Rust call, so an abort takes effect between rules.
-- All caps are explicit and reported in `result.truncated` — no silent truncation (project rule). `maxCandidatePairs` applies to the TS backend only; the WASM kernel runs every pair.
+- All caps are explicit and reported in `result.truncated` — no silent truncation (project rule). `maxCandidatePairs` is one budget for the whole run, shared across rules, and applies to the TS backend only; the WASM kernel runs every pair.
 
 ---
 
@@ -221,7 +224,7 @@ The TS reference uses `@ifc-lite/spatial`'s `BVH` (`build` + `queryAABB`); `rust
 
 A huge fraction of naïve clash "hits" are expected adjacencies. The adapter precomputes pair-exclusions from IFC relationships (cheap, via cached `EntityNode` getters — **never** `extractEntityAttributesOnDemand` in a loop, per `AGENTS.md`):
 
-- **Element vs its own opening/void** — `IfcRelVoidsElement` (`EntityNode.voids()`); the Rust crate already models this in `void_index.rs` / `void_analysis.rs`.
+- **Element vs its own opening/void** — `IfcRelVoidsElement` (`EntityNode.voids()`); the geometry crate already models this in `rust/geometry/src/void_index.rs`.
 - **Host vs hosted filler** — door/window in its wall via `IfcRelFillsElement` (`EntityNode.filledBy()`).
 - **Same assembly** — members of one `IfcRelAggregates` parent (`EntityNode.decomposes()`).
 - **Self** — same `key`.
@@ -232,7 +235,7 @@ The core takes an opaque exclusion predicate / set and skips those pairs in the 
 
 ## 6. Sensible BCF export (the headline requirement)
 
-**Problem:** 1,000 clashes must not become 1,000 BCF topics. The `@ifc-lite/bcf` package already shows the right pattern in `createBCFFromIDSReport` (grouping strategies + `maxTopics` safety valve + `createMultiEntityViewpoint`). We mirror it for clash.
+**Problem:** 1,000 clashes must not become 1,000 BCF topics. The `@ifc-lite/bcf` package already shows the right pattern in `createBCFFromIDSReport` (grouping strategies + `maxTopics` safety valve + `buildMultiEntityViewpoint`). We mirror it for clash.
 
 ### 6.1 Grouping (`grouping.ts`)
 
@@ -277,7 +280,7 @@ Per group → **one topic + one viewpoint**, using the existing `@ifc-lite/bcf` 
 
 ### 6.3 Round-trip & lifecycle
 
-- Re-import a `.bcfzip` (`readBCF`) and map topics back to clash ids with `mapBcfToClashes`, which reads the `clash-ids:` line and returns each id's topic GUID and status. No host (viewer, CLI, MCP) calls it yet, so status does not flow back into the clash panel automatically.
+- Re-import a `.bcfzip` (`readBCF`) and map topics back to clash ids with `mapBcfToClashes`, which reads the `clash-ids:` line and returns, per clash id, a list of `{ topicGuid, status }` (one entry per topic the id appears in; `by: 'element'` grouping puts one clash in two topics). No host (viewer, CLI, MCP) calls it yet, so status does not flow back into the clash panel automatically.
 - Combined with §8 (revisions), this turns clash from a one-shot report into a tracked workflow.
 
 ---
@@ -316,7 +319,7 @@ The TS reference engine is the **oracle**. `packages/clash/src/differential.test
 
 ## 8. Clash lifecycle across revisions (ties into the existing diff engine)
 
-`compareClashRuns(previous, next)` (`lifecycle.ts`) compares two clash runs (or a run before/after a model revision) the same way `computeDiff` compares models by `globalId`. It matches by `clashReviewKey` (rule id + both elements' durable keys, order-independent), not by `clash.id`, because `clash.id` also folds in the per-load model id:
+`compareClashRuns(previous, next)` (`lifecycle.ts`) compares two clash runs (or a run before/after a model revision) the same way `diffModels` (`@ifc-lite/diff`) compares models by `globalId`. It matches by `clashReviewKey` (rule id + both elements' durable keys, order-independent), not by `clash.id`, because `clash.id` also folds in the per-load model id:
 
 - **added** — key absent in the prior run
 - **persistent** — key in both

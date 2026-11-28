@@ -36,6 +36,80 @@ describe('bounded sandbox decoding (#11600)', () => {
     }
   });
 
+  it('reads an enumerable non-callable toJSON getter once per crossing', async () => {
+    const { sdk, received } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 2 } });
+    try {
+      const result = await sandbox.eval(`
+        let reads = 0;
+        const value = { get toJSON() { return ++reads; } };
+        bim.export.csv([], value);
+        console.log(value);
+        value;
+      `, { typescript: false });
+      expect(received).toEqual([[[], { toJSON: 1 }]]);
+      expect(result.logs[0]?.args).toEqual([{ toJSON: 2 }]);
+      expect(result.value).toEqual({ toJSON: 3 });
+      expect((await sandbox.eval('reads', { typescript: false })).value).toBe(3);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('calls the toJSON hook once with its original receiver and property key', async () => {
+    const { sdk } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 2 } });
+    try {
+      const result = await sandbox.eval(`
+        let reads = 0;
+        const child = { name: 'wall', get toJSON() {
+          reads++;
+          return function (key) { return this.name + ':' + key; };
+        }};
+        ({ child });
+      `, { typescript: false });
+      expect(result.value).toEqual({ child: 'wall:child' });
+      expect((await sandbox.eval('reads', { typescript: false })).value).toBe(1);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('keeps ordinary boxed JSON values as primitives', async () => {
+    const { sdk } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 1 } });
+    try {
+      const result = await sandbox.eval('({ count: new Number(3), label: new String("wall"), active: new Boolean(false) })', {
+        typescript: false,
+      });
+      expect(result.value).toEqual({ count: 3, label: 'wall', active: false });
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('keeps the shallow cyclic console fallback and continues the script', async () => {
+    const { sdk } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 1 } });
+    try {
+      const result = await sandbox.eval(`
+        const value = {};
+        value.self = value;
+        console.log('before', value, 'after');
+        console.log('continued');
+        42;
+      `, { typescript: false });
+      expect(result.value).toBe(42);
+      expect(result.logs.map(entry => entry.args)).toEqual([
+        ['before', '[object Object]', 'after'], ['continued'],
+      ]);
+      await expect(sandbox.eval('console.log({ child: value })', { typescript: false }))
+        .rejects.toThrow(/depth limit 1/);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
   it.each([
     ['argument', 'bim.export.csv([], value)'],
     ['entity refs', 'bim.export.csv([value])'],

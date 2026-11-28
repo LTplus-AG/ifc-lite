@@ -52,7 +52,7 @@ export function buildBridge(
   let resetLogs: () => void;
   try {
     decoder = hostWork.getValueDecoder(vm, maxDumpDepth);
-    resetLogs = buildConsole(vm, logs, decoder.decode);
+    resetLogs = buildConsole(vm, logs, decoder.decodeConsole);
 
     const bimHandle = vm.newObject();
     try {

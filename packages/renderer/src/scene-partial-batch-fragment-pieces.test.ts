@@ -321,6 +321,7 @@ describe('a streaming fragment splits per entity like a finalized batch (#9254)'
     const TINT: [number, number, number, number] = [0.9, 0.6, 0.3, 0.4];
     const meshes = [glass(T, 0, 1), glass(U, 2, 2), mesh(V, 4, { triangles: 4, color: TINT }), glass(T, 6, 8), mesh(W, 8, { triangles: 16, color: TINT })];
     scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [] });
+    await scene.drainColdTier(); // The cold tier is loaded on demand.
     scene.setGpuResidencyBudget(1);
     scene.setHostResidencyBudget(1);
     stream(scene, meshes.slice(0, 3));
@@ -484,6 +485,7 @@ describe('a finalized batch partial draws only the pieces it holds (#9270)', () 
     const meshes = [mesh(A, 0), mesh(B, 2, { triangles: 2 }), mesh(C, 4, { triangles: 4 })];
     // A cold restore loads only the batch's own entities: C would never come back.
     scene.setColdGeometryProvider({ loadMeshesInBounds: async () => meshes.slice(0, 2).map((m) => ({ ...m })) });
+    await scene.drainColdTier(); // The cold tier is loaded on demand.
     const batch = await outgrownPastFragmentBudget(scene, meshes);
     scene.setGpuResidencyBudget(1);
     scene.setHostResidencyBudget(1);

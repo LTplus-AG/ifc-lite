@@ -133,11 +133,18 @@ impl<'a> ExactTail<'a> {
                         let unextended = context.unextended_rectangles.get(opening_idx)
                             .map(|&[min, max]| crate::GeometryRouter::make_box_mesh(min, max));
                         let cutter = unextended.as_ref().unwrap_or(attempt.opening_mesh);
-                        if let Some(retry) = shell_retry::try_cut(host, cutter) {
-                            clipper.truncate_failures(attempt.failures_before);
-                            *host = retry;
-                            state.host_mutated = true;
-                            continue;
+                        match shell_retry::try_cut(host, cutter) {
+                            Some(shell_retry::Retry::Cut(retry)) => {
+                                clipper.truncate_failures(attempt.failures_before);
+                                *host = retry;
+                                state.host_mutated = true;
+                                continue;
+                            }
+                            Some(shell_retry::Retry::NoOverlap) => {
+                                clipper.truncate_failures(attempt.failures_before);
+                                continue;
+                            }
+                            None => {}
                         }
                     }
                     state.fallback_635(host, context, attempt);

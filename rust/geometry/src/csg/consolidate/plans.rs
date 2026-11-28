@@ -13,6 +13,22 @@ use nalgebra::Vector3;
 use rustc_hash::FxHashSet;
 use std::collections::HashSet;
 
+#[derive(Clone, Copy)]
+pub(super) enum ConsolidationUse {
+    ClosedOutput,
+    BooleanOperand,
+    #[cfg(feature = "csg_manifold_gate")]
+    ShellUnionRetry,
+}
+
+#[cfg(feature = "csg_manifold_gate")]
+impl super::ClippingProcessor {
+    pub(in crate::csg) fn consolidate_shell_union(&self, mesh: Mesh) -> Mesh {
+        Self::consolidate_with_use(mesh, self.length_unit_scale, true, true,
+            ConsolidationUse::ShellUnionRetry, true)
+    }
+}
+
 pub(super) struct Planned {
     pub plans: Vec<PlanBucket>,
     pub supported_bids: FxHashSet<u32>,
@@ -42,6 +58,7 @@ pub(super) fn build(
     merged_bucket_keys: &HashSet<BucketKey>,
     supported: &supported_cells::Supported,
     length_unit_scale: f64,
+    usage: ConsolidationUse,
 ) -> Planned {
     let mut supported_bids = FxHashSet::default();
     let mut retained_cells = Mesh::new();
@@ -57,7 +74,7 @@ pub(super) fn build(
         if !supported.buckets.contains(bucket_key) {
             let mut next_bid = bid;
             super::plan::append_baseline_plan(tris, merged_bucket_keys.contains(bucket_key),
-                &mut next_bid, length_unit_scale, &mut plans);
+                &mut next_bid, length_unit_scale, &mut plans, usage);
             continue;
         }
         // Use the FIRST triangle's normal/anchor for a stable 2D basis;

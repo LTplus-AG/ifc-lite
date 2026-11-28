@@ -21,10 +21,12 @@
 
 use super::conform::{PlanBucket, PlanRegion};
 use super::plane_merge::PlaneTri;
+use super::ConsolidationUse;
 use crate::triangulation::project_to_2d_with_basis;
 use i_overlay::core::fill_rule::FillRule;
 use i_overlay::core::overlay_rule::OverlayRule;
 use i_overlay::float::single::SingleFloatOverlay;
+use i_overlay::i_shape::base::data::{Contour, Shapes};
 use nalgebra::Vector3;
 
 mod disjoint;
@@ -43,8 +45,9 @@ pub(super) fn append_baseline_plan(
     next_bid: &mut u32,
     length_unit_scale: f64,
     plans: &mut Vec<PlanBucket>,
+    usage: ConsolidationUse,
 ) {
-    let plan = plan_one(tris, use_tag, *next_bid, length_unit_scale, None);
+    let plan = plan_one_with_usage(tris, use_tag, *next_bid, length_unit_scale, None, usage);
     *next_bid += 1;
     plans.push(plan);
 }
@@ -114,6 +117,17 @@ fn plan_one(
     length_unit_scale: f64,
     original_noise_area: Option<f64>,
 ) -> PlanBucket {
+    plan_one_with_usage(tris, use_tag, bid, length_unit_scale, original_noise_area, ConsolidationUse::ClosedOutput)
+}
+
+fn plan_one_with_usage(
+    tris: &[PlaneTri],
+    use_tag: bool,
+    bid: u32,
+    length_unit_scale: f64,
+    original_noise_area: Option<f64>,
+    usage: ConsolidationUse,
+) -> PlanBucket {
     crate::progress::tick();
     // #3914: only a bucket merged using trusted kernel plane tags uses its tag.
     // Separated groups retain this policy: a merged bucket still uses its tag;
@@ -171,7 +185,7 @@ fn plan_one(
             clip.push(path);
         }
     }
-    let shapes = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
+    let shapes = usage.projected_union(&subject, &clip);
     if shapes.is_empty() {
         plan.raw.extend(tris.iter().map(|t| t.v));
         return plan;
@@ -189,6 +203,24 @@ fn plan_one(
         });
     }
     plan
+}
+
+impl ConsolidationUse {
+    fn projected_union(
+        self, subject: &[Contour<[f64; 2]>], clip: &[Contour<[f64; 2]>],
+    ) -> Shapes<[f64; 2]> {
+        let ordinary = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
+        #[cfg(feature = "csg_manifold_gate")]
+        if matches!(self, Self::ShellUnionRetry) && matches!(ordinary.as_slice(), [shape] if shape.len() == 1) {
+            // Only refine a single simple ring. A hole or multiple regions
+            // keep their ordinary plan and its matching i32 separation proof.
+            let wide = subject.overlay_as::<i64>(&clip, OverlayRule::Union, FillRule::NonZero);
+            if matches!(wide.as_slice(), [shape] if shape.len() == 1) {
+                return wide;
+            }
+        }
+        ordinary
+    }
 }
 
 fn certified_groups(

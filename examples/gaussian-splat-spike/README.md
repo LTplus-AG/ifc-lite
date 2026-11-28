@@ -237,11 +237,11 @@ inputs are available for users to run their own validation.
 
 ## Integration boundary
 
-- **SplatTransform 3.11.2:** actual `.splat` parsing through its file-system and
+- **SplatTransform** (pinned at 3.12.0; the recorded evidence used 3.11.2): actual `.splat` parsing through its file-system and
   chunk-source APIs. PlayCanvas's Gaussian iterator interprets encoded scale,
   rotation, opacity and DC colour. The experiment's code only adapts columns
   and applies explicit placements.
-- **PlayCanvas 2.23.3:** complete upstream scene renderer, native WebGPU, IFC
+- **PlayCanvas** (pinned at 2.24.3; the recorded evidence used 2.23.3): complete upstream scene renderer, native WebGPU, IFC
   geometry uploaded as double-sided meshes and E57 positions as point
   primitives. This evaluates adopting its scene runtime; it does not show its
   Gaussian subsystem running inside IFC-Lite's existing renderer.

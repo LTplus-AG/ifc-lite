@@ -221,8 +221,12 @@ Process IFC files on a high-performance Rust server with intelligent caching.
 # Using Docker
 docker run -p 3001:8080 ghcr.io/ltplus-ag/ifc-lite-server
 
-# Or using native binary
-npx @ifc-lite/server-bin
+# Or using the native binary (it listens on 8080 unless PORT is set)
+PORT=3001 npx @ifc-lite/server-bin
+
+# Or scaffold a server project: Docker (server) or native binary (server-native)
+npx create-ifc-lite my-backend --template server
+npx create-ifc-lite my-backend --template server-native
 ```
 
 ### 2. Connect from Client
@@ -250,7 +254,7 @@ async function main() {
   const file = fileInput?.files?.[0];
   if (!file) return;
 
-  // Parse with Parquet format (15x smaller than JSON)
+  // Parse with Parquet format (a smaller payload than JSON)
   const result = await client.parseParquet(file);
 
   console.log(`Parsed ${result.meshes.length} meshes`);
@@ -535,7 +539,7 @@ sequenceDiagram
 
 ```typescript
 import { IfcParser } from '@ifc-lite/parser';
-import { IfcServerClient } from '@ifc-lite/server-client';
+import { IfcServerClient, IfcServerError } from '@ifc-lite/server-client';
 
 const parser = new IfcParser();
 
@@ -555,9 +559,10 @@ const client = new IfcServerClient({ baseUrl: 'http://localhost:3001' });
 try {
   const result = await client.parseParquet(file);
 } catch (error) {
-  if (error instanceof Error && error.message.includes('timeout')) {
+  // A non-2xx answer is an IfcServerError: branch on its stable `code` (or `status`).
+  if (error instanceof IfcServerError && error.code === 'REQUEST_TIMEOUT') {
     console.error('Server timeout - try streaming for large files');
-  } else if (error instanceof Error && error.message.includes('413')) {
+  } else if (error instanceof IfcServerError && error.code === 'FILE_TOO_LARGE') {
     console.error('File too large - increase MAX_FILE_SIZE_MB on server');
   } else {
     throw error;
@@ -576,7 +581,7 @@ try {
 ### Server-Side
 
 1. **Enable caching** - Same file = instant response on repeat loads
-2. **Use Parquet format** - 15x smaller payloads than JSON
+2. **Use Parquet format** - smaller payloads than JSON (see [Performance](performance.md))
 3. **Stream large files** - Two options for files >50MB:
     - `parseStream()` - Async iterator pattern, JSON batches
     - `parseParquetStream()` - Callback pattern, Parquet format (recommended for best compression)

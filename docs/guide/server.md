@@ -8,7 +8,7 @@ The IFClite server processes IFC files on a high-performance Rust backend, provi
 
 - **Content-Addressable Caching** - Same file = instant response (skip upload entirely)
 - **Parallel Processing** - Multi-core geometry extraction with Rayon
-- **Parquet Format** - roughly 15-50x smaller payloads than JSON
+- **Parquet Format** - smaller payloads than JSON (see [Performance](performance.md))
 - **SSE Streaming** - Progressive geometry for immediate rendering
 - **Full Data Model** - Properties, quantities, and spatial hierarchy computed upfront
 
@@ -83,15 +83,21 @@ flowchart TB
 === "Native Binary"
 
     ```bash
-    npx @ifc-lite/server-bin
+    PORT=3001 npx @ifc-lite/server-bin
     ```
 
 === "From Source"
 
     ```bash
     cd apps/server
-    cargo run --release
+    PORT=3001 cargo run --profile server-release
     ```
+
+The server listens on port 8080 unless `PORT` is set; the commands above use
+3001 so the client below reaches all three. Build from source with
+`--profile server-release`: the workspace's plain `release` profile aborts on
+panic, so one malformed upload would stop the whole server instead of failing
+one request.
 <!-- markdownlint-enable MD046 -->
 
 ### 2. Connect from Client
@@ -111,7 +117,7 @@ console.log('Server status:', health.status);
 ### 3. Parse a File
 
 ```typescript
-// Parquet format (~15x smaller than JSON)
+// Parquet format (a smaller payload than JSON)
 const result = await client.parseParquet(file);
 
 console.log(`Meshes: ${result.meshes.length}`);
@@ -126,8 +132,8 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v1/parse` | POST | Full parse, JSON response |
-| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller); `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
-| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload; `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
+| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (smaller than JSON); `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
+| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (quantized and deduplicated, smaller again); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload; `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
 | `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload; `?parquet_layout=shared-shapes&stream_shapes=cross-batch` shares shapes across batches (see [below](#sharing-across-stream-batches-opt-in)); `?data_model_entities=rooted` fills the [rooted-only data model](#rooted-only-entities-table-opt-in) |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
@@ -154,7 +160,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
 | `/api/v1/cache/{key}` | GET | Retrieve the cached `POST /api/v1/parse` result for the `cache_key` that route returned, with `stats.from_cache: true` (404 when that route has not cached one) |
 | `/api/v1/cache/{key}` | DELETE | Evict every cached representation of the source file that `cache_key` names (`200` with `{ key, deleted }`; `deleted: 0` when nothing was cached) |
-| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it); `?data_model_entities=rooted` fetches the rooted-only variant |
+| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 400 the fill refused the model, with the reason in the body; 404 nothing cached and nothing filling it); `?data_model_entities=rooted` fetches the rooted-only variant |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON (200 hit; 202 a parse that writes it is running right now; 404 nothing cached and nothing writing it) |
 
 ### Utility Endpoints
@@ -164,14 +170,15 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/` | GET | API information |
 | `/api/v1/health` | GET | Health check (liveness; always open) |
 | `/api/v1/ready` | GET | Readiness probe (503 while the memory breaker is shedding load) |
-| `/api/v1/metrics` | GET | Prometheus text metrics (registered only when `IFC_METRICS_ENABLED=1`) |
+| `/api/v1/metrics` | GET | Prometheus text metrics (`404` unless `IFC_METRICS_ENABLED` is `1` or `true`); behind the bearer token when one is set, so a request without it gets `401` first |
 
 !!! note "One key for `GET` and `DELETE /api/v1/cache/{key}`"
     Both methods take the same `{key}`: the request `cache_key` a parse
     returned (`result.cache_key` from `POST /api/v1/parse`, or the `cache_key`
     in a Parquet response's `X-IFC-Metadata` header). That is the file's
     SHA-256, then `-{opening_filter}`, then `-q{level}` for a non-default
-    tessellation quality, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
+    tessellation quality, then `-layers` for a parse sent with
+    `layer_slicing=true`, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
     Both resolve it through the same function, so a key one accepts the other
     accepts, and anything else (a bare SHA-256, an internal storage key with a
     `-json-v7` or `-parquet-v8` suffix) is a `400 BAD_REQUEST` from both.
@@ -213,9 +220,13 @@ import { IfcServerClient } from '@ifc-lite/server-client';
 
 const client = new IfcServerClient({
   baseUrl: 'http://localhost:3001',
-  timeout: 300000  // 5 minutes (default)
+  timeout: 300000,  // 5 minutes (default)
+  token: 'my-token' // optional; sent as `Authorization: Bearer <token>`
 });
 ```
+
+Set `token` when the server runs with `IFC_SERVER_API_TOKEN`; without it the
+parse and cache routes answer `401`.
 
 ### Parse Methods
 
@@ -226,7 +237,7 @@ a Parquet cache probe, the client stops without starting an upload.
 
 #### parseParquet (Recommended)
 
-Best for most use cases - roughly 15x smaller payloads than JSON.
+Best for most use cases - smaller payloads than JSON.
 
 ```typescript
 const result = await client.parseParquet(file);
@@ -242,7 +253,7 @@ const result = await client.parseParquet(file);
 
 #### parseParquetOptimized
 
-Roughly 50x smaller payloads using integer quantization (0.1mm precision).
+Smaller payloads than `parseParquet`, using integer quantization (0.1mm precision) and mesh deduplication.
 
 ```typescript
 const result = await client.parseParquetOptimized(file);
@@ -437,9 +448,12 @@ Properties and spatial hierarchy are computed in parallel and cached. Both
 `/parse/parquet` and `/parse/parquet/optimized` write the data model
 synchronously, BEFORE their response goes out, so a fetch right after either
 one returns is already a hit; only the streaming route (`/parse/parquet-stream`)
-fills it in the background after its `complete` event, which is the one case
+fills it in the background. That fill starts when the stream starts and runs
+beside it, so it may finish before or after the `complete` event. It is the one case
 `GET /api/v1/parse/data-model/{key}` answers `202` for (a fill genuinely
-running for that key — keep polling). Everything else is `404`: no data model
+running for that key — keep polling). A fill that refused the model (a table
+over its size budget) leaves a `400` with the reason, and `fetchDataModel`
+rejects with it. Everything else is `404`: no data model
 was ever written for that key and none is in flight, so a client should stop
 polling rather than retry forever. Both `fetchDataModel` and `fetchSymbolic` return
 `null` for a missing cache entry (404) or when all attempts report pending (202).
@@ -544,8 +558,9 @@ if (symbols) {
 // Health check
 const health = await client.health();
 
-// Uploads are gzip-compressed automatically by parse()/parseParquet(),
-// so no manual compression step is needed.
+// parse() gzip-compresses every upload. parseParquet() compresses too,
+// except for files over 50 MiB or a base URL containing localhost/127.0.0.1;
+// parseParquetStream() uploads uncompressed.
 
 // Check Parquet decoder availability
 const available = await client.isParquetSupported();
@@ -575,6 +590,8 @@ interface EntityMetadata {
   name?: string;
   description?: string;
   object_type?: string;
+  tag?: string;              // element Tag; absent from older servers
+  predefined_type?: string;  // PredefinedType token, dots stripped
   has_geometry: boolean;
 }
 ```
@@ -592,6 +609,9 @@ interface Property {
   property_name: string;
   property_value: string;
   property_type: string;
+  data_type?: string;        // raw IFC value type, e.g. 'IFCLENGTHMEASURE'
+  data_type_mixed?: true;    // IfcPropertyTableValue: no single data_type
+  values?: string[];         // candidate values of a multi-valued property
 }
 ```
 
@@ -695,8 +715,9 @@ world_vertex = origin + R * position
 ```
 
 Both values in the same Y-up metres frame as the positions. On a model with
-repeats this is typically 2.4x to 4.8x smaller; a model with nothing to share is
-unchanged apart from the identity rotation columns.
+repeats the geometry payload is markedly smaller (a server test holds it to at
+most 40% of the default layout on a real architectural model); a model with
+nothing to share is unchanged apart from the identity rotation columns.
 
 **It is opt-in, and it must stay that way.** The layout renders incorrectly on a
 client that does not apply the rotation — every occurrence of a shared shape
@@ -809,13 +830,15 @@ Cache keys are derived from file content:
 
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
-# quality appends a "-q{level}" suffix after it
+# quality appends a "-q{level}" suffix after it, and layer_slicing=true a
+# "-layers" suffix after that
+{SHA256}-{filter}-json-v7             # POST /parse JSON response
 {SHA256}-{filter}-parquet-v8          # Geometry (default layout)
 {SHA256}-{filter}-parquet-v9          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v6 # Metadata header
 {SHA256}-{filter}-datamodel-v9        # Properties & hierarchy
 {SHA256}-{filter}-datamodel-rooted-v9 # Same, rooted-only entities table (data_model_entities=rooted)
-{SHA256}-{filter}-symbolic-v3         # 2D symbol stream
+{SHA256}-{filter}-symbolic-v4         # 2D symbol stream
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
@@ -895,8 +918,7 @@ sequenceDiagram
 | Upload | Always | **Skipped entirely on a hit** (hash check first) |
 
 On a cache hit the server does no parsing at all: the response is a disk read
-plus network transfer, so repeat loads are typically orders of magnitude
-faster than the first load.
+plus network transfer, so repeat loads are much faster than the first load.
 
 ## Server Configuration
 
@@ -907,13 +929,13 @@ faster than the first load.
 | `PORT` | 8080 | Server port |
 | `RUST_LOG` | info (+ debug for server/http spans) | Log filter (error, warn, info, debug, trace) |
 | `MAX_FILE_SIZE_MB` | 500 | Maximum upload size in MB |
-| `WORKER_THREADS` | CPU cores | Parallel processing threads |
+| `WORKER_THREADS` | CPU cores (`4` in the Docker image) | Parallel processing threads |
 | `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory path |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout in seconds |
 | `IFC_STREAM_IDLE_TIMEOUT_SECS` | 600 | Close a streaming connection after this many seconds with no socket-write progress; `0` disables |
-| `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch size |
-| `MAX_BATCH_SIZE` | 1000 | Streaming maximum batch size |
-| `CACHE_MAX_AGE_DAYS` | 7 | Cache retention in days |
+| `INITIAL_BATCH_SIZE` | 100 | Geometry jobs in the first streamed batch |
+| `MAX_BATCH_SIZE` | 1000 | Geometry jobs in every later streamed batch |
+| `CACHE_MAX_AGE_DAYS` | 7 | Read but not applied: the server does not expire cache entries by age |
 | `CORS_ORIGINS` | localhost dev origins | Allowed CORS origins (comma-separated, `*` for all) |
 | `IFC_SERVER_API_TOKEN` | unset | Optional bearer token for parse/cache routes (falls back to `API_TOKEN`) |
 | `IFC_MAX_CONCURRENT_PARSES` | `WORKER_THREADS` | Parse jobs admitted at once (CPU gate) |
@@ -937,7 +959,6 @@ services:
       - RUST_LOG=info
       - MAX_FILE_SIZE_MB=500
       - WORKER_THREADS=8
-      - CACHE_MAX_AGE_DAYS=30
     volumes:
       - ifc-cache:/app/cache
 
@@ -947,7 +968,9 @@ volumes:
 
 !!! tip "Adding Health Checks"
     For orchestration systems requiring health checks, the server exposes
-    `GET /api/v1/health`. If your runtime image includes `curl` or `wget`:
+    `GET /api/v1/health`. The published image already ships `curl` and
+    declares this check as its `HEALTHCHECK`. For your own image, if it
+    includes `curl` or `wget`:
 
     ```yaml
     healthcheck:
@@ -969,23 +992,16 @@ For production, consider:
 ```bash
 # Railway deployment
 railway up
-
-# Fly.io deployment
-fly deploy
-
-# Kubernetes
-kubectl apply -f k8s/deployment.yaml
 ```
+
+The repository ships a Railway configuration (`apps/server/railway.toml`). It
+has no Fly.io or Kubernetes manifests; write those for your own platform.
 
 ## Streaming
 
-### Dynamic Batch Sizing
+### Streaming batch sizes
 
-The server uses dynamic batch sizing for optimal streaming:
-
-- **Initial batch**: 100 entities (fast first frame)
-- **Growth**: Increases based on processing speed
-- **Maximum**: 1000 entities per batch
+The streaming routes target `INITIAL_BATCH_SIZE` geometry jobs in the first batch (default 100, at least 1). Later batches target `MAX_BATCH_SIZE` jobs (default 1000), with the first batch size as a minimum. The final batch can be shorter. The size does not adapt to processing speed.
 
 ### Streaming Flow
 
@@ -996,18 +1012,21 @@ sequenceDiagram
     participant Cache
 
     Client->>Server: POST /parse/parquet-stream
+    Server->>Server: Spawn data-model fill (background task)
     Server->>Client: SSE: start {total_estimate, cache_key}
 
-    loop For each batch
-        Server->>Server: Process geometry batch
-        Server->>Client: SSE: batch {data, mesh_count}
-        Client->>Client: Decode & render
+    par Geometry stream
+        loop For each batch
+            Server->>Server: Process geometry batch
+            Server->>Client: SSE: batch {data, mesh_count}
+            Client->>Client: Decode & render
+        end
+        Server->>Server: Start background task to finish and cache the Parquet row groups
+        Server->>Client: SSE: complete {stats, metadata}
+    and Data-model fill
+        Server->>Server: Extract data model
+        Server->>Cache: Store data model
     end
-
-    Server->>Cache: Store accumulated meshes
-    Server->>Server: Extract data model (background)
-    Server->>Cache: Store data model
-    Server->>Client: SSE: complete {stats, metadata}
 ```
 
 ### Skipping the upload on a cache hit
@@ -1037,8 +1056,8 @@ Two rules keep the parameter honest:
 - **The hash only selects.** It can not cause anything to be parsed or written;
   a key with nothing behind it is a 404, never a parse.
 
-Send the same `opening_filter`, `tessellation_quality` and `parquet_layout` you
-would send with the file. They are part of the cache identity, so a hash paired
+Send the same `opening_filter`, `tessellation_quality`, `parquet_layout` and
+`layer_slicing` you would send with the file. They are part of the cache identity, so a hash paired
 with a different layout asks about a different entry.
 
 `POST /api/v1/parse/parquet/optimized` accepts the same `?sha256=` parameter,
@@ -1187,8 +1206,8 @@ for await (const event of client.parseStream(file)) {
 
 ### Network
 
-1. **Gzip Compression** - Applied automatically on upload by `parse()`/`parseParquet()`
-2. **Parquet Format** - roughly 15-50x smaller than JSON
+1. **Gzip Compression** - Applied on upload by `parse()`, and by `parseParquet()` for files up to 50 MiB (50 × 1024 × 1024 bytes) sent to a base URL that contains neither `localhost` nor `127.0.0.1`
+2. **Parquet Format** - smaller than JSON (see [Performance](performance.md))
 3. **SSE Streaming** - No polling overhead
 
 ## Error Handling
@@ -1292,7 +1311,7 @@ try {
 ```
 
 Checking only for `event.type === 'error'` leaves the second case unhandled: the
-loop ends early and the throw escapes uncaught. `parseStreamToParquet()` raises
+loop ends early and the throw escapes uncaught. `parseParquetStream()` rejects with
 the same error for the same condition.
 
 ### Connection Errors
@@ -1301,10 +1320,14 @@ the same error for the same condition.
 try {
   await client.health();
 } catch (error) {
-  if (error.message.includes('ECONNREFUSED')) {
-    console.error('Server not running');
-  } else if (error.message.includes('timeout')) {
+  // health() aborts after the client's `timeout` with a TimeoutError.
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
     console.error('Server not responding');
+  } else if (error instanceof TypeError) {
+    // fetch rejects with a TypeError when it cannot connect at all.
+    console.error('Server not reachable');
+  } else {
+    throw error;
   }
 }
 ```
@@ -1316,8 +1339,8 @@ try {
 - [API Reference](../api/typescript.md) - Complete API documentation
 - [Architecture](../architecture/overview.md) - System design details
 
-Symbolic sidecars use schema-v2 cache entries and full JSON responses use v3
-to refresh direct fill provenance. Existing Parquet geometry keys stay valid;
+Symbolic sidecars are cached under `-symbolic-v4` and full JSON responses under
+`-json-v7`, which carry direct fill provenance. Existing Parquet geometry keys stay valid;
 a replay needs current symbolic metadata, so stale sidecars trigger a reparse.
 Older symbol JSON remains decodable with unknown item provenance.
 

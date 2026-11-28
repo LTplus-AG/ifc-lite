@@ -64,5 +64,5 @@ IDS, rewrite it in an information manager's wording, and set `reviewed: true`.
 the corpus on disk. It runs the E4 IDS files through the parser and the audit.
 It checks the invented names in E5 against the IFC schema tables. The E4/E5
 checks need the built packages (`pnpm turbo build --filter=@ifc-lite/ids...`).
-In CI, the node-tests job runs the same files through its `scripts/` glob
-catch-all after it downloads the build output.
+In CI, the scripts-tests job (Node scripts tests) runs the same files through
+its `scripts/` glob catch-all after it downloads the build output.

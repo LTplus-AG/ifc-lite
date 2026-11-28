@@ -29,7 +29,7 @@ Because a bucket keeps its element ids, the bidirectional link needs no support 
 | **Model compare** | recorded change row of a selected saved comparison | `State`, `What changed`, `IFC type`, `Revision` | recorded rows do not select the current model |
 | **Existing unbound Model compare charts** | diff entry of the latest live comparison | `State`, `What changed`, `IFC type`, `Revision` | the head-side entity (base-side for a deletion) |
 
-Date columns feed the `timeline` chart, which buckets per ISO week — topics created or closed per week, tasks starting per week. BCF dates are the only time axis: saved clash reports let separate charts show separate runs side by side, but there is no chart of clash counts over successive runs.
+Date columns feed the `timeline` chart, which buckets per ISO week — topics created or closed per week, tasks starting per week. BCF topics and schedule tasks are the only sources with dates: saved clash reports let separate charts show separate runs side by side, but there is no chart of clash counts over successive runs.
 
 The dashboard's **scope** applies to the elements source and decides which elements its rows cover: all loaded models, only what is visible right now (the same answer the Lists panel's "visible only" gives), or the basket.
 

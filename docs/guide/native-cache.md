@@ -6,12 +6,12 @@ The format is specified in [`packages/cache/SPEC.md`](https://github.com/LTplus-
 
 ## Installation
 
-Prebuilt binaries are attached to [GitHub releases tagged `cache-cli-v*`](https://github.com/LTplus-AG/ifc-lite/releases?q=cache-cli-v). Download the `.tar.gz` for your platform and verify its build provenance with the GitHub CLI before extracting it. The Windows archive contains `ifc-build-cache.exe`. The release notes give the cache format version written by that build.
+The **Cache CLI Binaries** workflow attaches prebuilt binaries to [GitHub releases tagged `cache-cli-v*`](https://github.com/LTplus-AG/ifc-lite/releases?q=cache-cli-v); the tag must be `cache-cli-v` plus the crate version, or the workflow fails. If no such release is listed yet, build from source as shown below. Download the `.tar.gz` for your platform and verify its build provenance with the GitHub CLI before extracting it. The Windows archive contains `ifc-build-cache.exe`. The release notes give the cache format version written by that build.
 
-Set `tag` and `archive` to the release tag and downloaded filename for your platform:
+Set `tag` and `archive` to the release tag and downloaded filename for your platform (archives are named `ifc-build-cache-<target>.tar.gz`, for `linux-x64`, `linux-arm64`, `linux-x64-musl`, `darwin-x64`, `darwin-arm64` and `win32-x64`):
 
 ```sh
-tag=cache-cli-v30.0.0
+tag=cache-cli-v30.1.0
 archive=ifc-build-cache-linux-x64.tar.gz
 gh attestation verify "$archive" --repo LTplus-AG/ifc-lite \
   --signer-workflow LTplus-AG/ifc-lite/.github/workflows/cache-cli-binaries.yml \
@@ -105,4 +105,4 @@ let stats = build_cache_to_path(&source, "model.ifclite".as_ref(), CacheOptions:
 println!("{} meshes in {} chunks", stats.mesh_count, stats.chunk_count);
 ```
 
-`build_cache(&source, options)` returns the same bytes as a `Vec<u8>` when you need the cache in memory rather than on disk.
+`build_cache(&source, options)` builds the same bytes in memory and returns `Result<(Vec<u8>, CacheStats), CacheError>`: handle the error, then destructure the bytes and stats. Use it when you need the cache in memory rather than on disk.

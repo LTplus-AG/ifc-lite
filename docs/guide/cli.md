@@ -191,6 +191,7 @@ Supports property filters (`--where`), missing-property checks (`--missing`), he
 | `--palette <name>` | Heatmap palette: `blue-red`, `green-red`, `rainbow` |
 | `--isolate` | Hide non-matching entities |
 | `--flyto` | Fly camera to results |
+| `--name <label>` | Label for the single rule built from the flags (default: type plus check) |
 | `--rules <file>` | Batch rules from JSON |
 | `--json` | Machine-readable output |
 | `--out <file>` | Write match results as JSON to a file instead of stdout |
@@ -431,6 +432,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--profile` | `obj`/`gltf`/`glb`/`jsonld`/`ifcx`/`usd`/`step`: print WASM init and export wall time to stderr |
 | `--scale <step>` | `cityjson`/`cityjsonseq`: vertex grid in output units (default `0.001`, millimetres) |
 | `--blocks-only` | `cityjson`/`cityjsonseq`: buildings as LoD0/LoD1 only; rooms and elements keep their attributes but no geometry |
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
@@ -766,6 +768,16 @@ ifc-lite bcf list topics.bcf
 ifc-lite bcf add-comment --file topics.bcf --text "Fixed in revision 3" --out updated.bcf
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--title <t>` | Topic title (`create`, required) |
+| `--description <t>` | Topic description (`create`) |
+| `--author <email>` | Author of the topic or comment (default `cli@ifc-lite.com`) |
+| `--file <file.bcf>` | BCF file to add the comment to (`add-comment`, required) |
+| `--text <t>` | Comment text (`add-comment`, required) |
+| `--topic <guid>` | Topic to comment on (`add-comment`; default: the first topic) |
+| `--out <file.bcf>` | Output BCF file (required for `create` and `add-comment`) |
+
 ---
 
 ### `clash` - Clash Detection
@@ -889,6 +901,8 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 | `--depth <N>` | Element depth |
 | `--thickness <N>` | Element thickness |
 | `--name <str>` | Element name |
+| `--description`, `--object-type`, `--tag`, `--long-name`, `--predefined-type`, `--operation-type`, `--partitioning-type`, `--proxy-type` | IFC text attributes (`Description`, `ObjectType`, `Tag`, ...), where the element type has them |
+| `--length`, `--radius`, `--diameter`, `--wall-thickness`, `--slope`, `--rise`, `--overhang`, `--direction`, `--xdim`, `--ydim`, profile flags (`--overall-width`, `--overall-depth`, `--web-thickness`, `--flange-thickness`, `--flange-width`, `--fillet-radius`), stair flags (`--number-of-risers`, `--riser-height`, `--tread-length`) | Numeric shape parameters for the types that use them |
 | `--project <str>` | Project name |
 | `--storey <str>` | Storey name |
 | `--elevation <N>` | Storey elevation |
@@ -897,7 +911,10 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 | `--material <json>` | Add material (JSON) |
 | `--color <r,g,b>` | Set color (0-1 per channel) |
 | `--from-json` | Read parameters from stdin JSON |
-| `--out <file>` | Output IFC file (required) |
+| `--wall-id <expressId>` | Host wall for `wall-door` / `wall-window` (required for those two). Each `create` call builds a new model with one element, so no wall with that ID exists yet and these two types currently fail with `Unknown wallId`. Use the SDK (`addIfcWall`, then `addIfcWallDoor` / `addIfcWallWindow` on the same `IfcCreator`) for hosted doors and windows. |
+| `--is-rectangular` | Rectangular instead of circular section (`pile`) |
+| `--out <file>` | Output IFC file (required unless `--viewer` is given) |
+| `--viewer <port>` | Stream the created geometry to a running viewer (`ifc-lite view`) |
 | `--json` | Output creation stats as JSON |
 
 ---
@@ -1319,19 +1336,20 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `test <dir>` | Run `manifest.tests` against an in-process sandbox. Exits non-zero on any failure. |
 | `keygen` | Generate an Ed25519 keypair and write `<prefix>.public.iflk` + `<prefix>.private.iflk` (private file is `0600`). |
 | `sign <bundle>` | Sign a directory or unsigned `.iflx`. |
-| `verify <bundle>` | Inspect a `.iflx` — manifest, files, capabilities, signature. With `--key`, verify the embedded signature matches the expected public key fingerprint. |
-| `capabilities` | List every capability in the catalogue. |
+| `verify <bundle>` | Inspect a `.iflx` and verify its embedded signature if signed. Successful text output shows `id@version`, signing status and, for a signed bundle, its fingerprint and signing time. With `--key`, require a signed bundle and the expected public key fingerprint. |
+| `capabilities` | List every capability in the catalogue with its risk tier and description. |
 
 **Common flags:**
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Machine-readable output (validate / test / verify) |
+| `--json` | Machine-readable output (validate / test / verify / capabilities) |
 | `--bail` | Stop on first test failure (`ext test`) |
-| `--out <file>` | Output path (pack / sign / keygen) |
-| `--key <file>` | Key file path (sign / verify) |
+| `--out <file>` | Output path (pack / sign); key-file prefix for keygen |
+| `--key <file>` | Private key for `sign` or `pack`; passing it to `pack` enables signing. Public key for `verify`. |
 | `--id <id>` | Override the manifest id during `ext init` |
 | `--name <name>` | Override the manifest name during `ext init` |
+| `--label <name>` | Label stored in the keypair (`ext keygen`) |
 
 The full design lives in [Authoring Extensions](extension-authoring.md). For the security model — capability grammar, sandbox limits, signing semantics — see [the threat-model RFC](../architecture/ai-customization/02-security.md).
 
@@ -1358,9 +1376,9 @@ ifc-lite layer log main --json
 | `status` | Show the draft and whether its base ref moved |
 | `diff <side>` | Diff composed states; a side is a ref, layer id, or `.ifcx` file. `--against <side>`, `--components`, `--json` |
 | `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--allow-unrelated`, `--json` |
-| `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>`, `--set-ref`, `--json` |
+| `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>` (falls back to `IFC_LITE_REGISTRY_TOKEN`), `--set-ref`, `--json`. A refused ref policy exits 3 |
 | `log <ref>` | Provenance log, newest first. `--json` |
-| `bake <ref> -o <out>` | Materialize a tombstone-free flat document |
+| `bake <ref> -o <out>` | Materialize a tombstone-free flat document (`--out` works as well as `-o`) |
 | `revert <layer-id>` | Publish an inverse layer and append it to a ref. `--in <ref>`, `--resolve ours\|theirs`, `--json` |
 | `rebase <layer-id>` | Re-plan a candidate onto a ref's current stack and publish the rebased layer. `--onto <ref>`, `--json` |
 
@@ -1414,6 +1432,13 @@ ifc-lite eval tests/models/cost/buildingsmart-cost-composition.ifc "bim.cost.eva
 ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.name.includes('Fire'))"
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--type <T[,T]>` | Evaluate the expression once per entity of these types, with `ref` bound to each (`"bim.quantity(ref, 'GrossSideArea')" --type IfcWall`) |
+| `--limit <N>` | With `--type`, stop after N entities |
+| `--viewer <port>` | Forward `bim.viewer.*` calls to a running viewer (`ifc-lite view`) |
+| `--json` | Machine-readable output |
+
 Cost reads use the loaded IFC source snapshot; pending generic mutation overlays
 are not included until the source is replaced or reloaded.
 
@@ -1447,6 +1472,7 @@ Run JavaScript files with the full `bim` SDK available.
 
 ```bash
 ifc-lite run analysis.js model.ifc
+ifc-lite run analysis.js model.ifc --viewer 3456   # stream bim.viewer.* calls to a running viewer
 ```
 
 **Example script (`analysis.js`):**
@@ -1578,7 +1604,8 @@ sequence produces byte-identical reward lines.
 instead of loading a file; mid-session `{"type":"reset","seed":8}` swaps to
 a fresh generated episode. Episode generation dynamically imports
 `tools/world-gym/` from a repo checkout; the published npm package prints a
-clear error for `--seed` while `--model` keeps working. See the
+clear error for `--seed` while `--model` keeps working. `--locale en|de|fr`
+sets the language of IDS check messages in the reward lines (default `en`). See the
 [`@ifc-lite/cli` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#gym)
 for the full protocol reference.
 
@@ -1944,6 +1971,10 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 
 ## Command Reference
 
+The `georef` command reads, writes, checks and fixes georeferencing (`show`, `set`, `update`, `remove`, `check`, `fix`). See [Georeferencing](georeferencing.md) for flags and finding codes.
+
+The `site-context` command builds one GLB of Swiss terrain, parcels and neighbouring buildings around a georeferenced model, a coordinate or an EGRID. See [Site Context](site-context.md) for flags and the required attribution.
+
 The `semantic` command reads JSON/SPARQL providers, generates shared profile artifacts, validates JSON or RDF, and operates an authenticated HTTPS relay. See [Headless semantic records](semantic-headless.md) for flags, result formats, credential references, and reproduction examples.
 
 <!-- BEGIN GENERATED: cli-commands -->
@@ -1985,7 +2016,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `lod` | Generate lightweight LOD artifacts |
 | `simplify` | Demesher: simplify meshes, write lighter IFC |
 | `mcp` | Start an MCP server (files load over stdio) |
-| `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
+| `ext` | Manage IFClite extensions: validate, init, keygen, pack, sign, verify, test, capabilities ("ext --help") |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
 | `oci` | Publish an IFC file to an OCI registry (any model argument may also be oci://...) |

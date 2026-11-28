@@ -11,12 +11,11 @@ cursors move." Pick the depth you want; each section is self-contained.
 ## TL;DR
 
 ```sh
-# 1. Build everything once
-pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
+# 1. Run the test suites (Turbo builds their dependencies first)
+pnpm test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 
-# 2. Run the test suite
-pnpm --filter @ifc-lite/collab test
-pnpm --filter @ifc-lite/collab-server test
+# 2. Build the relay for the demos below
+pnpm turbo build --filter=@ifc-lite/collab-server
 
 # 3. Boot the server + the live two-tab demo
 pnpm collab:demo
@@ -34,8 +33,12 @@ VITE_COLLAB_ENABLED=true VITE_COLLAB_SERVER_URL=ws://localhost:1234 pnpm --filte
 
 The fastest way to verify everything works.
 
+Run tests through the root `pnpm test` (Turbo), not a package-local
+`vitest run`: Turbo's `test` task builds upstream workspace packages first,
+while a package-local run reads whatever their `dist/` holds.
+
 ```sh
-pnpm --filter @ifc-lite/collab test
+pnpm test --filter=@ifc-lite/collab
 # → suites covering schema, ops, snapshot round-trip, undo,
 #   conflict detection, conflict UI bridge, federation,
 #   blob store + GC, CSG, parametric kernel, determinism,
@@ -44,7 +47,7 @@ pnpm --filter @ifc-lite/collab test
 #   bridge, viewer bridge, perf, render math, latency sim,
 #   property-based convergence under random concurrent edits.
 
-pnpm --filter @ifc-lite/collab-server test
+pnpm test --filter=@ifc-lite/collab-server
 # → suites covering server boot, two-client sync,
 #   room-token auth (mint / revoke / kick), CORS,
 #   disconnect/reconnect, audit log + JSONL, retention,
@@ -54,10 +57,10 @@ pnpm --filter @ifc-lite/collab-server test
 #   path locks, snapshot worker, secure-bundle.
 ```
 
-Both filter together via Turbo:
+Both together:
 
 ```sh
-pnpm turbo test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
+pnpm test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 ```
 
 ---
@@ -67,13 +70,13 @@ pnpm turbo test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 Asserts the §15 budget on your machine.
 
 ```sh
-pnpm --filter @ifc-lite/collab exec vitest run test/perf-benchmark.test.ts
+pnpm test --filter=@ifc-lite/collab -- test/perf-benchmark.test.ts
 ```
 
 For the heavy 100k-entity state-vector benchmark:
 
 ```sh
-COLLAB_BENCH_HEAVY=1 pnpm --filter @ifc-lite/collab exec vitest run test/perf-benchmark.test.ts
+COLLAB_BENCH_HEAVY=1 pnpm test --filter=@ifc-lite/collab --env-mode=loose -- test/perf-benchmark.test.ts
 ```
 
 ---
@@ -261,9 +264,9 @@ what runs. Set `E2E_EVIDENCE_DIR` to also write the run's JSON and screenshots
 to a directory. The project is opt-in (CI's
 required lanes select `viewer-e2e-ci` by name).
 
-Headless equivalents:
-`pnpm --filter viewer exec tsx --import ./src/test/vite-module-hooks.mjs --test src/lib/collab/room-reconstruct.test.ts`
-runs the owner → recipient → rejoin sequence on a synthetic two-entity model,
+Headless equivalents, all in `apps/viewer/src/lib/collab/` (run them with
+`TEST_PATTERN='room-reconstruct|room-two-copies|owner-seed' pnpm test --filter=@ifc-lite/viewer --env-mode=loose`):
+`room-reconstruct.test.ts` runs the owner → recipient → rejoin sequence on a synthetic two-entity model,
 `room-two-copies.ac20.test.ts` beside it on the real fixture (skipped until
 `pnpm fixtures` has run), and `owner-seed.frames.test.ts` pins the seed to a
 handful of doc updates — the relay's per-connection write budget dropped a

@@ -7,7 +7,7 @@ Guide to testing IFClite.
 ```mermaid
 flowchart TB
     subgraph Unit["Unit Tests"]
-        TS["TypeScript (Vitest)"]
+        TS["TypeScript (Vitest, node:test)"]
         Rust["Rust (cargo test)"]
     end
 
@@ -143,88 +143,61 @@ same contract for specific inputs in normal CI.
 
 ## Writing Tests
 
-### TypeScript Tests (Vitest)
+### TypeScript Tests
 
 Tests sit next to the code they cover (`src/<name>.test.ts`) or in the
-package's `test/` directory.
+package's `test/` directory. Most packages run them with Vitest
+(`"test": "vitest run"`). A few run node's built-in runner through `tsx
+--test` instead (`@ifc-lite/renderer`, `@ifc-lite/geo`, `@ifc-lite/ifcx`,
+`@ifc-lite/viewer-core` in `packages/viewer`, and `@ifc-lite/viewer` in
+`apps/viewer`); `@ifc-lite/wasm` uses `node --test`. Check the package's `test` script
+before you pick an API.
+
+A minimal Vitest test against the committed demo sample, which needs no
+`pnpm fixtures` (compare `packages/parser/src/console-quiet-by-default.test.ts`):
 
 ```typescript
-// packages/parser/src/ifc-parser.test.ts
-import { describe, it, expect, beforeEach } from 'vitest';
-import { IfcParser } from './ifc-parser.js';
+// packages/parser/src/<name>.test.ts
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from 'vitest';
+import { IfcParser } from './index.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const SAMPLE_IFC = resolve(__dirname, '../../../apps/viewer/public/samples/hello-wall.ifc');
+
+// readFileSync can return a view into a shared pool; copy out exactly this file's bytes.
+function readSample(): ArrayBuffer {
+  const buffer = readFileSync(SAMPLE_IFC);
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
 
 describe('IfcParser', () => {
-  let parser: IfcParser;
+  it('parses the committed wall sample', async () => {
+    const store = await new IfcParser().parseColumnar(readSample());
 
-  beforeEach(() => {
-    parser = new IfcParser();
-  });
-
-  describe('parse', () => {
-    it('should parse a simple IFC file', async () => {
-      const content = `
-        ISO-10303-21;
-        HEADER;
-        FILE_DESCRIPTION((''), '2;1');
-        FILE_NAME('test.ifc', '', '', '', '', '', '');
-        FILE_SCHEMA(('IFC4'));
-        ENDSEC;
-        DATA;
-        #1=IFCPROJECT('0001',#2,$,$,$,$,$,$,$);
-        ENDSEC;
-        END-ISO-10303-21;
-      `;
-
-      const buffer = new TextEncoder().encode(content).buffer;
-      const result = await parser.parseColumnar(buffer);
-
-      expect(result.entityCount).toBe(1);
-      expect(result.schemaVersion).toBe('IFC4');
-    });
-
-    it('should extract entity properties', async () => {
-      const buffer = await loadTestFile('test-model.ifc');
-      const result = await parser.parseColumnar(buffer);
-
-      const wallIds = result.entityIndex.byType.get('IFCWALL') ?? [];
-      expect(wallIds.length).toBeGreaterThan(0);
-      expect(result.entities.getGlobalId(wallIds[0])).toMatch(/^[0-9a-zA-Z_$]+$/);
-    });
-
-    it('should handle streaming geometry', async () => {
-      const buffer = await loadTestFile('large-model.ifc');
-      const geometry = new GeometryProcessor();
-      await geometry.init();
-
-      const batches: number[] = [];
-      for await (const event of geometry.processStreaming(new Uint8Array(buffer))) {
-        if (event.type === 'batch') {
-          batches.push(event.meshes.length);
-        }
-      }
-
-      expect(batches.length).toBeGreaterThan(0);
-      expect(batches.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
-    });
-
-    it('should throw on invalid file', async () => {
-      const buffer = new TextEncoder().encode('invalid content').buffer;
-
-      await expect(parser.parseColumnar(buffer)).rejects.toThrow();
-    });
+    expect(store.schemaVersion).toBe('IFC4');
+    const wallIds = store.entityIndex.byType.get('IFCWALL') ?? [];
+    expect(wallIds.length).toBeGreaterThan(0);
+    expect(store.entities.getGlobalId(wallIds[0])).toMatch(/^[0-9A-Za-z_$]{22}$/);
   });
 });
 ```
+
+A test that needs a manifest fixture checks that the file exists and skips
+otherwise (see [Test Fixtures](#test-fixtures)).
 
 ### Rust Tests
 
 A module whose bulk is tests keeps them in a sibling `<name>_tests.rs`,
 included with `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;`, so the
 `use super::*;` below reaches the module's private parsers (see
-`rust/core/src/parser/tokenizer_tests.rs`).
+`rust/core/src/parser/tokenizer_tests.rs`, which is table-driven). The sketch
+below shows the APIs such tests call; it is not a copy of that file.
 
 ```rust
-// rust/core/src/parser/tokenizer_tests.rs
+// A sibling test module of rust/core/src/parser/tokenizer.rs
 use super::*;
 use crate::{EntityDecoder, EntityScanner, IfcType};
 
@@ -273,68 +246,16 @@ fn test_decode_entity() {
 
 ### Integration Tests
 
-```typescript
-// tests/integration/full-parse.test.ts
-import { describe, it, expect } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
-import { GeometryProcessor } from '@ifc-lite/geometry';
-import { Renderer } from '@ifc-lite/renderer';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+`pnpm test:integration` runs `tests/integration.test.ts` with `tsx`. It is a
+plain script with its own small `test()` helper, not a Vitest suite. It parses
+the first fixture it finds (`tests/models/various/01_BIMcollab_Example_ARC.ifc`,
+then `tests/models/various/test.ifc`) and checks quantity extraction, the DuckDB
+SQL integration and Parquet export. With neither fixture present it prints a
+warning and exits without running anything, so run `pnpm fixtures` first.
 
-describe('Full Parse Integration', () => {
-  it('should parse and render a real IFC file', async () => {
-    // Load test file. readFileSync returns a Node Buffer backed by a shared
-    // pool, so `.buffer` would expose the whole pool — not just this file's
-    // bytes. Copy the exact bytes into a standalone Uint8Array first.
-    const filePath = join(__dirname, '../fixtures/test-model.ifc');
-    const bytes = new Uint8Array(readFileSync(filePath));
-
-    // Parse metadata
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(bytes.buffer); // parseColumnar takes an ArrayBuffer
-
-    // Extract geometry separately
-    const geometry = new GeometryProcessor();
-    await geometry.init();
-    const meshes = [];
-    for await (const event of geometry.processAdaptive(bytes)) {
-      if (event.type === 'batch') meshes.push(...event.meshes);
-    }
-
-    // Verify parsing
-    expect(store.entityCount).toBeGreaterThan(0);
-    expect(meshes.length).toBeGreaterThan(0);
-
-    // Verify geometry
-    const mesh = meshes[0];
-    expect(mesh.positions.length).toBeGreaterThan(0);
-    expect(mesh.indices.length).toBeGreaterThan(0);
-    expect(mesh.indices.length % 3).toBe(0); // Valid triangles
-  });
-
-  it('should handle large files with streaming', async () => {
-    const filePath = join(__dirname, '../fixtures/large-model.ifc');
-    const bytes = new Uint8Array(readFileSync(filePath)); // standalone copy, see above
-
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(bytes.buffer);
-
-    const geometry = new GeometryProcessor();
-    await geometry.init();
-
-    let totalMeshes = 0;
-    for await (const event of geometry.processStreaming(bytes)) {
-      if (event.type === 'batch') {
-        totalMeshes += event.meshes.length;
-      }
-    }
-
-    expect(totalMeshes).toBeGreaterThan(0);
-    expect(store.entityCount).toBeGreaterThan(0);
-  });
-});
-```
+Cross-package checks of the published artifacts live in `pnpm test:packed`
+(see [Packed consumer workflows](#packed-consumer-workflows)) and the server
+API in `pnpm test:api` (`tests/api/`, node:test via `tsx --test`).
 
 ## Test Fixtures
 
@@ -361,28 +282,27 @@ the maintainer flow (adding fixtures, rotating releases).
 
 ### Creating Test Data
 
+For a small inline model, build the STEP text in the test and encode it. Keep
+every entity's attribute count right for the schema you declare:
+
 ```typescript
-// tests/helpers/create-fixture.ts
-export function createMinimalIfc(entities: string[]): ArrayBuffer {
-  const content = `
-ISO-10303-21;
+function createMinimalIfc(entities: string[]): ArrayBuffer {
+  const content = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('Test'), '2;1');
-FILE_NAME('test.ifc', '', '', '', '', '', '');
+FILE_NAME('test.ifc', '', (''), (''), '', '', '');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
 ${entities.join('\n')}
 ENDSEC;
 END-ISO-10303-21;
-  `;
+`;
   return new TextEncoder().encode(content).buffer;
 }
 
-// Usage
 const buffer = createMinimalIfc([
-  "#1=IFCPROJECT('proj123',$,$,$,$,$,$,$,$);",
-  "#2=IFCWALL('wall123',$,$,$,$,$,$,$);"
+  "#1=IFCPROJECT('0YvCT2_$X3_xJG3rzD8L_8',$,'Project',$,$,$,$,$,$);",
 ]);
 ```
 
@@ -455,11 +375,14 @@ geometry on fixture bytes (see `rust/*/tests/`).
 
 ### TypeScript Coverage
 
-```bash
-# Generate coverage report (Vitest, per package)
-cd packages/parser && pnpm exec vitest run --coverage
+No package lists a Vitest coverage provider as a dependency, so
+`vitest run --coverage` first asks to install `@vitest/coverage-v8`. For a
+one-off local report in a Vitest package:
 
-# View HTML report
+```bash
+cd packages/parser
+pnpm add -D @vitest/coverage-v8   # local only; do not commit the change
+pnpm exec vitest run --coverage --coverage.reporter=html
 open coverage/index.html
 ```
 
@@ -481,47 +404,19 @@ inspection.
 
 ## Performance Tests
 
-```typescript
-// tests/performance/parse.bench.ts
-import { bench, describe } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
-import { GeometryProcessor } from '@ifc-lite/geometry';
-import { readFileSync } from 'fs';
-
-describe('Parser Performance', () => {
-  const smallFile = readFileSync('fixtures/small.ifc');
-  const largeFile = readFileSync('fixtures/large.ifc');
-
-  bench('parse small file (columnar)', async () => {
-    const parser = new IfcParser();
-    await parser.parseColumnar(smallFile.buffer);
-  });
-
-  bench('parse large file (columnar)', async () => {
-    const parser = new IfcParser();
-    await parser.parseColumnar(largeFile.buffer);
-  });
-
-  bench('streaming geometry large file', async () => {
-    const geometry = new GeometryProcessor();
-    await geometry.init();
-
-    for await (const event of geometry.processStreaming(new Uint8Array(largeFile))) {
-      // Process batches
-    }
-  });
-});
-```
-
-Run benchmarks:
+There are no Vitest `bench` files in the repo. Performance is tracked by:
 
 ```bash
-# Vitest bench, from the package holding the .bench.ts file
-pnpm exec vitest bench
-
 # Viewer load benchmark (Playwright, project viewer-benchmark)
 pnpm test:benchmark:viewer
+
+# Compare a benchmark run against the stored baseline
+pnpm benchmark:check
 ```
+
+Ceilings that CI enforces live in `tests/perf-ratchets/*.json`. For the
+published figures and how they are produced, see the
+[performance guide](../guide/performance.md).
 
 ## CI/CD
 

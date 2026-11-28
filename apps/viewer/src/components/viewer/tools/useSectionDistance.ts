@@ -63,8 +63,6 @@ export interface SectionDistance {
 export function useSectionDistance(): SectionDistance {
   const { placed, storeys } = usePlacedSectionStoreys();
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
-  const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
-  const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
 
   const range = useMemo(
@@ -74,30 +72,31 @@ export function useSectionDistance(): SectionDistance {
 
   const cutAtStorey = useCallback((storey: SectionStorey) => {
     const state = useViewerStore.getState();
-    if (state.sectionPlane.custom || state.sectionPlane.axis !== 'down') setSectionPlaneAxis('down');
+    if (state.sectionPlane.custom || state.sectionPlane.axis !== 'down') state.setSectionPlaneAxis('down');
     const r = sectionAxisRange(placed?.shiftedBounds ?? null, 'down');
-    if (r) setSectionPlanePosition(storeyCutPosition(storey, r));
-  }, [placed, setSectionPlaneAxis, setSectionPlanePosition]);
+    if (r) state.setSectionPlanePosition(storeyCutPosition(storey, r));
+  }, [placed]);
 
   const bounds = placed?.shiftedBounds ?? null;
   const custom = sectionPlane.custom;
   const onChangeWorld = useCallback((next: number) => {
-    if (range) setSectionPlanePosition(worldToPercent(next, range));
-  }, [range, setSectionPlanePosition]);
+    if (range) useViewerStore.getState().setSectionPlanePosition(worldToPercent(next, range));
+  }, [range]);
   const onChangePercent = useCallback((next: number) => {
-    setSectionPlanePosition(clampSectionPercent(next));
-  }, [setSectionPlanePosition]);
+    useViewerStore.getState().setSectionPlanePosition(clampSectionPercent(next));
+  }, []);
 
+  const inputs = { storeys, range, bounds, cutAtStorey };
   if (custom) {
     if (custom.alignment) return {
       kind: 'alignment', value: custom.alignment.geometricHorizontalDistanceMeters,
       onChange: next => { void setAlignmentDistance(next); },
       step: 0.1, min: 0, max: custom.alignment.geometricHorizontalLengthMeters,
-      snaps: [], storeys, range, bounds, cutAtStorey,
+      snaps: [], ...inputs,
     };
     return {
       kind: 'custom', value: custom.distance, onChange: setSectionCustomDistance,
-      step: 0.05, min: -Infinity, max: Infinity, snaps: [], storeys, range, bounds, cutAtStorey,
+      step: 0.05, min: -Infinity, max: Infinity, snaps: [], ...inputs,
     };
   }
   if (range) {
@@ -105,11 +104,11 @@ export function useSectionDistance(): SectionDistance {
       kind: 'world', value: percentToWorld(sectionPlane.position, range), onChange: onChangeWorld,
       step: 0.1, min: range.min, max: range.max,
       snaps: sectionPlane.axis === 'down' ? storeys.map(storeyCutElevation) : [],
-      storeys, range, bounds, cutAtStorey,
+      ...inputs,
     };
   }
   return {
     kind: 'percent', value: sectionPlane.position, onChange: onChangePercent,
-    step: 1, min: 0, max: 100, snaps: [], storeys, range, bounds, cutAtStorey,
+    step: 1, min: 0, max: 100, snaps: [], ...inputs,
   };
 }

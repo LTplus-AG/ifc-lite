@@ -22,6 +22,7 @@ npx @ifc-lite/server-bin                # start server on PORT (default 8080)
 PORT=3001 npx @ifc-lite/server-bin       # custom port
 npx @ifc-lite/server-bin download        # pre-fetch the binary (CI / pre-deploy)
 npx @ifc-lite/server-bin info            # show platform target + cache state
+npx @ifc-lite/server-bin version         # print the package version
 npx @ifc-lite/server-bin help            # full help
 ```
 
@@ -126,7 +127,10 @@ cargo build --release
 | `ensureBinary(onProgress?)` | Download if missing — resolves with binary path |
 | `downloadBinary(onProgress?)` | Force re-download — resolves with binary path |
 | `getBinaryInfo()` | Returns `{ platform, binaryPath, cacheDir, isCached }` |
-| `isBinaryCached()` | Boolean — is the binary on disk? |
+| `getBinaryPath(platformInfo?)` | Path the binary is cached at (inside the package's `.cache` directory) |
+| `isBinaryCached()` | Resolves with a boolean — is the binary for this package version on disk? |
+| `getPlatformInfo()` | Detects the platform, architecture, musl and target triple; throws on an unsupported combination |
+| `getPlatformDescription(info)` | Human-readable name for a `PlatformInfo` |
 
 ## Docs
 

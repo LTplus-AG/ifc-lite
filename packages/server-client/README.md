@@ -31,6 +31,11 @@ const result = await client.parseParquet(file);
 console.log(`${result.metadata.entity_count} entities, ${result.meshes.length} meshes`);
 ```
 
+`ServerConfig` also takes `timeout` (milliseconds, default 300000) and
+`token`. A `token` is sent as `Authorization: Bearer <token>` on every
+request; pass it when the server sets `IFC_SERVER_API_TOKEN`, which makes its
+parse and cache routes reject unauthenticated calls.
+
 ## Stream a large file
 
 ```typescript
@@ -91,6 +96,11 @@ const result = await client.parseParquet(stored); // or parseParquetStream(store
 
 Nothing is hashed or uploaded. A miss rejects with `IfcServerError` (`404`,
 `NOT_FOUND`); there is no upload to fall back to.
+
+The reference helpers (`isProcessedModelRef`, `normalizeProcessedModelHash`,
+`assertProcessedModelHash`, `processedModelSize`, `ProcessedModelRef`) are
+exported from the root and from the `@ifc-lite/server-client/processed-model`
+subpath, which imports none of the client or Parquet code.
 
 ## Health check + server info
 

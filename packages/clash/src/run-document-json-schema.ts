@@ -124,9 +124,9 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
             "required": ["rule", "matchedA", "matchedB", "candidatesExamined", "examined"],
             "properties": {
               "rule": {"type": "string"},
-              "matchedA": {"type": "integer"},
-              "matchedB": {"type": ["integer", "null"]},
-              "candidatesExamined": {"type": ["integer", "null"]},
+              "matchedA": {"type": "integer", "minimum": 0},
+              "matchedB": {"type": ["integer", "null"], "minimum": 0},
+              "candidatesExamined": {"type": ["integer", "null"], "minimum": 0},
               "examined": {
                 "anyOf": [
                   {"type": "null"},
@@ -198,7 +198,7 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
             {
               "type": "object",
               "required": ["reason", "droppedPairs"],
-              "properties": {"reason": {"type": "string"}, "droppedPairs": {"type": "integer"}},
+              "properties": {"reason": {"type": "string"}, "droppedPairs": {"type": "integer", "minimum": 0}},
               "additionalProperties": false,
             },
           ],

@@ -68,6 +68,17 @@ describe('validateClashRunDocument: consistency of an untrusted document', () =>
     expect(carried.carried.map((c) => c.to)).toEqual([decisionKey]);
   });
 
+  it('refuses negative counts', () => {
+    const doc = roundTrip(build({ result: result([], ['D1'], ['W1']) }));
+    doc.manifest.coverage[0].matchedA = -1;
+    doc.manifest.truncated = { reason: 'maxCandidatePairs', droppedPairs: -1 };
+    const res = validateClashRunDocument(doc);
+    expect(res.ok ? [] : res.errors).toEqual([
+      '$.manifest.coverage[0].matchedA: expected a non-negative integer',
+      '$.manifest.truncated.droppedPairs: expected a non-negative integer',
+    ]);
+  });
+
   it('checks the legacy key of an ambiguous finding by structure, since its ref is not stored', () => {
     const repeated = result([clash('D1', 'W1'), { ...clash('D1', 'W1'), id: 'r:D1:W1:dup', a: { ...clash('D1', 'W1').a, ref: 99, keyAmbiguous: true } }],
       ['D1'], ['W1']);

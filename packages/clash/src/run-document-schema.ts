@@ -38,7 +38,8 @@ const str: Check = (v, p, e) => { if (typeof v !== 'string') fail(e, p, 'a strin
 const nstr: Check = (v, p, e) => { if (v !== null && typeof v !== 'string') fail(e, p, 'a string or null'); };
 const num: Check = (v, p, e) => { if (typeof v !== 'number' || !Number.isFinite(v)) fail(e, p, 'a finite number'); };
 const nnum: Check = (v, p, e) => { if (v !== null) num(v, p, e); };
-const int: Check = (v, p, e) => { if (!Number.isInteger(v)) fail(e, p, 'an integer'); };
+/** Every integer in a run document is a count, so it cannot be negative. */
+const int: Check = (v, p, e) => { if (!Number.isInteger(v) || (v as number) < 0) fail(e, p, 'a non-negative integer'); };
 const nint: Check = (v, p, e) => { if (v !== null) int(v, p, e); };
 const bool: Check = (v, p, e) => { if (typeof v !== 'boolean') fail(e, p, 'a boolean'); };
 const oneOf = (...allowed: readonly unknown[]): Check => (v, p, e) => {

@@ -33,14 +33,21 @@ export function SnapCornerMarkers(): ReactNode {
     if (!renderer) { setMarkers(null); return; }
     const channel = renderer.cornerMarkers;
     setMarkers(channel.get());
+    const scene = renderer.getScene();
     const unsubscribe = channel.subscribe(() => setMarkers(channel.get()));
+    // Types view hides the instanced pass without changing the store's entity sets.
+    const unsubscribeGeometry = scene.onGeometryChange?.(() => {
+      const markers = channel.get();
+      if (markers?.candidates.some(c => scene.isInstancedEntity(c.expressId))
+        && scene.getInstancedEntityIds(true).next().done) channel.set(null);
+    });
     // A stationary pointer produces no new pick when Hide or Isolate changes its inputs.
     const unsubscribeVisibility = useViewerStore.subscribe((state, previous) => {
       if (state.hiddenEntities !== previous.hiddenEntities || state.isolatedEntities !== previous.isolatedEntities) {
         channel.set(null);
       }
     });
-    return () => { unsubscribeVisibility(); unsubscribe(); channel.set(null); };
+    return () => { unsubscribeGeometry?.(); unsubscribeVisibility(); unsubscribe(); channel.set(null); };
   }, [picking]);
   // Re-render when the camera moves, so markers projected under an old view go away at once.
   void useProjectorTick(!!picking && markers !== null);

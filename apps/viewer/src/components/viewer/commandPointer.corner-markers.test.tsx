@@ -208,4 +208,12 @@ it('#11746 hiding a GPU occurrence clears the channel and mounted glyph at a sta
   act(() => { useViewerStore.getState().showEntity(1025); });
   assert.equal(active(), null);
   await hover();
+  // Types view hides the entire instanced pass without changing store visibility sets.
+  await act(async () => { scene.setInstancedVisible(false); });
+  assert.equal(renderer.cornerMarkers.get(), null, 'scene visibility clears the channel before another pick');
+  assert.equal(active(), null);
+  assert.equal(renderer.readbackRaycastViewKey(), stamp);
+  await act(async () => { scene.setInstancedVisible(true); });
+  assert.equal(active(), null);
+  await hover();
 });

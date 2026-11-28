@@ -249,11 +249,14 @@ Interactive model slicing with semantic axis names.
 
 ### Section Plane Types
 
-| Axis | Direction | Color | Use Case |
-|------|-----------|-------|----------|
-| `down` | Y-axis | Light Blue | Floor plans |
-| `front` | Z-axis | Green | Elevation views |
-| `side` | X-axis | Orange | Cross sections |
+| Axis | Direction | Use Case |
+|------|-----------|----------|
+| `down` | Y-axis | Floor plans |
+| `front` | Z-axis | Elevation views |
+| `side` | X-axis | Cross sections |
+
+Every axis, and a face-picked plane, draws its preview in one accent colour
+(`#03A9F4` until `renderer.setOverlayTheme(...)` sets another).
 
 ### Creating Section Planes
 
@@ -320,7 +323,7 @@ const frames = renderer.getSectionPlaneFrames();
 
 The set can change from frame to frame (seven planes, then two, then none) without re-creating anything: the planes travel in each mesh's uniform, and a mesh drawn with no extra plane takes the same path it took before the option existed.
 
-A plane's cap comes from the cut polygons you upload for it: `renderer.uploadSection2DOverlay(polygons, lines, axis, position, range, flipped, customPlane, 'wing')`, and `renderer.clearSection2DOverlay('wing')` or `renderer.clearSection2DExtraOverlays(['face'])` to release caps. A cap is clipped by every other plane, never by its own. `sectionPlane.showGizmo = false` hides only the primary plane's preview quad.
+A plane's cap comes from the cut polygons you upload for it: `renderer.uploadSection2DOverlay(polygons, lines, axis, position, range, flipped, customPlane, 'wing')`, and `renderer.clearSection2DOverlay('wing')` to release one cap. `renderer.clearSection2DExtraOverlays(keep)` releases the cap of every extra plane whose id is not in `keep`, so `clearSection2DExtraOverlays(['face'])` keeps only `face`. A cap is clipped by every other plane, never by its own. `sectionPlane.showGizmo = false` hides only the primary plane's preview quad.
 
 To keep chosen entities whole, pass `sectionExcludedIds`. The set uses the same full scene IDs as `hiddenIds` (federated global IDs in the viewer), and exempts those entities from both the primary and every extra section plane. Flat, colour-batched, textured and instanced meshes, their shadows, GPU picking, CPU raycasting and selection outlines agree. Hidden/isolation filtering and `clipBox` still apply. Point clouds have no IFC entity IDs and keep their existing clipping behavior.
 
@@ -339,12 +342,11 @@ Omit the set or pass an empty set to restore clipping. In-place set edits take e
 graph TD
     subgraph SectionPlane["Section Plane Rendering"]
         Preview["Preview Pipeline"]
-        Cut["Cut Pipeline"]
         Grid["Grid Visualization"]
     end
 
     Preview -->|"Respects depth"| Behind["Behind geometry"]
-    Cut -->|"Always visible"| Front["In front"]
+    Preview -->|"Preview mode only"| Hidden["Plane hidden while cutting"]
     Grid --> Minor["100 divisions"]
     Grid --> Major["10 major cells"]
     Grid --> Edge["Soft edge fade"]
@@ -397,7 +399,7 @@ Advanced "magnetic" edge snapping for precision measurement and interaction.
 |------|-------------|----------|
 | `vertex` | Snap to mesh vertices | Highest |
 | `edge` | Snap to edge lines | High |
-| `face` | Snap to face surfaces | Medium |
+| `face` | Snap to face surfaces | Low |
 | `face_center` | Snap to face centroids | Medium |
 | `point_cloud` | Snap to a point-cloud scan point | See below |
 
@@ -691,7 +693,10 @@ drill from one pane of a curtain wall down to its own entity in the IFC source i
 stopping at the wall. It is the same value under the same name as `MeshData.geometryItemId`
 from `@ifc-lite/geometry`, and it is reported on every pick route: the GPU pick pass over
 hydrated per-piece meshes (small models), the GPU pick pass over whole colour batches
-that models past the pick-mesh budget take, and the CPU raycast fallback.
+that models past the pick-mesh budget take, and the CPU raycast fallback. The one gap is
+a GPU-instanced occurrence hit by the per-piece GPU pass: that shader has no
+per-occurrence item channel, so the hit carries no `geometryItemId` (the CPU raycast and
+the colour-batch route do report it).
 
 On the batch route the GPU reads only the entity from the vertex lane, so the renderer
 raycasts that one entity's retained CPU pieces along the same texel-centre ray to name
@@ -750,7 +755,8 @@ representation item. It is absent when:
 
 Every case in that list is geometry whose item identity was merged away before the pick
 ran. GPU-instanced occurrences are **not** in it: they carry their own item id, because
-the instanced wire format was extended to hold one. See
+the instanced wire format was extended to hold one (only the per-piece GPU route above
+cannot read it back). See
 [Item ids on instanced occurrences](./geometry.md#item-ids-on-instanced-occurrences) for
 that path, including how to tell a shard that declares no ids from a piece that has none.
 
@@ -931,7 +937,7 @@ The toolbar Set button shows a badge with the current basket count when active. 
 | Shortcut | Action |
 |----------|--------|
 | `Del` / `Backspace` | Hide selected entity |
-| `Space` | Hide selected entity (viewport-focused only) |
+| `Space` | Hide selected entity (unless a button or other pressable control has focus) |
 | `A` | Show all (see below for what it clears and what it keeps) |
 | `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
 
@@ -943,7 +949,12 @@ The toolbar Set button shows a badge with the current basket count when active. 
 - the Class filter;
 - the storey filter and Solo mode;
 - Exploded mode (levels return to Stacked);
-- hidden federated models.
+- hidden federated models;
+- a structural view mode (it returns to showing both physical and analytical elements);
+- the section cut's display;
+- the measurements' display.
+
+It also clears the selection, the basket's contents and any clash focus.
 
 It deliberately **keeps** four settings that are preferences rather than filters on this view:
 
@@ -1013,9 +1024,11 @@ for (const mesh of geometryResult.meshes) {
 ```
 
 !!! note "Custom Colors"
-    Dynamic color changes per-entity are not currently supported in the public API.
-    Colors are baked into geometry at load time. For advanced use cases,
-    see the viewer app source code for how batch rendering handles colors.
+    Load-time colours are baked into the geometry. For per-entity colour changes
+    afterwards, `renderer.getScene()` exposes `setColorOverrides(overrides, device,
+    pipeline)`, `updateMeshColors(updates, device, pipeline)`, `getColorOverrides()`
+    and `clearColorOverrides()`; take `device` and `pipeline` from
+    `renderer.getGPUDevice()` and `renderer.getPipeline()`.
 
 ## Performance Optimization
 
@@ -1373,6 +1386,26 @@ async function createViewer() {
 }
 ```
 
+## Lifecycle and other renderer methods
+
+The example above renders every animation frame. These `Renderer` methods cover
+the rest of a host's lifecycle:
+
+| Method | Purpose |
+|--------|---------|
+| `whenReady()`, `isReady()` | Wait for, or test, the end of `init()` |
+| `resize(width, height)` | Resize the canvas and the camera's viewport |
+| `requestRender()`, `peekRenderRequest()`, `consumeRenderRequest()` | A dirty flag for an on-demand loop: set it when something changes, and render only when `consumeRenderRequest()` returns `true` |
+| `onDeviceLost(listener)`, `isDeviceLost()` | Observe a lost GPU device (the listener receives `{ message, reason }`; the call returns an unsubscribe function) |
+| `onPersistentRenderDegradation(listener)` | Observe rendering that stays degraded |
+| `captureScreenshot()`, `captureColorFrame()` | Capture the canvas as a data URL, or the rendered colour frame |
+| `probeSurface(x, y)` | The world point of the surface under a canvas pixel, or `null` |
+| `setOverlayTheme(theme)` | Overlay colours, including the section-plane accent |
+| `setPointCloudOptions(options)`, `setEdlOptions(options)` | Point-cloud display and Eye-Dome Lighting |
+| `getFrameStats()`, `getDiagnostics()` | Statistics of the last frame and renderer diagnostics |
+| `setGpuInstancing(enabled)` | Turn GPU instancing on or off; returns `false` when refused because instanced geometry is already loaded |
+| `destroy()` | Release GPU resources |
+
 ## Next Steps
 
 - [Geometry Guide](geometry.md) - Geometry processing
@@ -1395,8 +1428,8 @@ translation in **renderer Y-up metres**. It applies to flat, textured, instanced
 and embedded pointcloud geometry assigned that model index, including later
 uploads. Pass `[0, 0, 0]` to reset. Keep each loaded model's index stable until
 it is removed; do not compact indices while its geometry remains on the GPU.
-`renderer.getScene().getModelTranslation(modelIndex)` reads the current offset
-in the same Y-up metre frame. It defaults to zero before a placement is set.
+The public renderer API has no getter for the offset: keep the value you passed.
+A model without a placement has a zero offset.
 The scene retains occurrence records and bounds after releasing CPU vertices,
 so whole-model movement remains available in GPU-resident mode.
 

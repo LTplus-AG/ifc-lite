@@ -71,7 +71,7 @@ The reference server is a plain Node websocket server with file persistence:
 
 ```sh
 npx @ifc-lite/collab-server
-# [collab-server] listening at ws://0.0.0.0:1234 (data: ./.collab-data)
+# [collab-server] listening at ws://0.0.0.0:1234 (data: ./.collab-data, auth: anonymous, registry: off, blob-gc: every 360m)
 ```
 
 Configuration is via environment variables:
@@ -83,6 +83,9 @@ Configuration is via environment variables:
 | `COLLAB_DATA_DIR` | `./.collab-data` | Room persistence directory |
 | `COLLAB_MAX_ROOMS` | `1024` | Maximum loaded rooms |
 | `COLLAB_METRICS_TOKEN` | unset | Token protecting the `/metrics` endpoint |
+| `COLLAB_TOKEN_SECRET` | unset | Enables signed room links; unset runs the server open (anonymous editor) |
+
+The [Collaboration Server](collab-server.md#configuration) guide lists every variable, including blob GC, idle unload and the layer registry.
 
 The server also exposes `/healthz`, Prometheus `/metrics`, and a content-addressed blob store under `/blobs/`.
 

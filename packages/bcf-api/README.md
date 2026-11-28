@@ -91,11 +91,13 @@ await client.createTopic(projectId, { title: 'Clash at grid 3/C' });
 await client.createComment(projectId, topicGuid, { comment: 'Fixed in rev B' });
 ```
 
+To push local work back, `topicToApiWrite(topic)` turns an `@ifc-lite/bcf` `BCFTopic` into the write body for `createTopic` / `updateTopic(projectId, topicGuid, body)` (server-owned fields such as guid, dates and authors are never sent), and `viewpointToApi(viewpoint)` builds the body for `createViewpoint(projectId, topicGuid, body)`. `default_visibility` is always written, because BCF API defaults it to `false` while BCF-XML defaults it to `true`.
+
 Errors are `BcfApiError` (with `status`, `url` and `isAuthError`); token endpoint failures are `BcfAuthenticationError` (with the RFC 6749 `errorCode`). Refresh an expiring session with `refreshAccessToken({ tokenUrl, refreshToken })`.
 
 ## Other auth flows
 
-Not every server offers the password grant — each advertises its flows in `/auth`'s `supported_oauth2_flows`. For servers that support the authorization-code flow, `exchangeAuthorizationCode({ tokenUrl, code, redirectUri, codeVerifier?, clientId, clientSecret? })` completes a sign-in whose authorization step you drive yourself (PKCE supported), and `registerBcfClient({ registrationUrl, clientName, redirectUrl })` mints a client on servers that advertise dynamic client registration. `requestClientCredentialsToken({ tokenUrl, clientId, clientSecret })` covers servers with OAuth application credentials (e.g. OpenProject), and a token obtained elsewhere plugs straight into `getAccessToken`.
+Not every server offers the password grant — each advertises its flows in `/auth`'s `supported_oauth2_flows`. For servers that support the authorization-code flow, `exchangeAuthorizationCode({ tokenUrl, code, redirectUri, codeVerifier?, clientId?, clientSecret? })` completes a sign-in whose authorization step you drive yourself (PKCE supported), and `registerBcfClient({ registrationUrl, clientName, redirectUrl? })` mints a client on servers that advertise dynamic client registration. `requestClientCredentialsToken({ tokenUrl, clientId, clientSecret })` covers servers with OAuth application credentials (e.g. OpenProject), and a token obtained elsewhere plugs straight into `getAccessToken`.
 
 ## License
 

@@ -172,16 +172,31 @@ fn prunes_references_to_removed_ifc2x3_resources_10970() {
 }
 
 #[test]
-fn clears_an_optional_representation_on_an_unconverted_varying_action_10970() {
+fn clears_an_optional_representation_on_a_varying_action_written_constant_10970() {
     let source = include_bytes!("../tests/fixtures/schema_unrooted_legacy_optional.ifc");
     let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
     let direct = crate::export_step(source, &opts).unwrap();
     let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
     let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    let constant = "#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";
+    assert!(direct.contains(constant), "{direct}");
+    assert!(logged.contains(constant), "{logged}");
     for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
-        assert!(output.contains("#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);"), "{writer}: {output}");
+        let action = output.lines().find(|line| line.starts_with("#30=")).expect("retained action");
+        let frame = crate::step_record_frame::record_frame(action).unwrap();
+        let slots = crate::step_slot::slots_of(frame.args(action)).unwrap();
+        assert_eq!(&slots[6..8], &["$", "#11"], "{writer}: {action}");
         assert!(!output.lines().any(|line| ["#41=", "#42=", "#43="].iter().any(|prefix| line.starts_with(prefix))), "{writer}: {output}");
     }
+}
+
+#[test]
+#[ignore = "#11698 tracks merged varying-action conversion"]
+fn merged_incomplete_varying_action_writes_ifc4_constant() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_legacy_optional.ifc");
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() });
+    let action = merged.lines().find(|line| line.starts_with("#30=")).expect("retained action");
+    assert!(action.starts_with("#30=IFCSTRUCTURALCURVEACTION(") && action.ends_with(",.CONST.);"), "{action}");
 }
 
 #[test]

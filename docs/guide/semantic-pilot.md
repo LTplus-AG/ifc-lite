@@ -249,7 +249,7 @@ it automatically. Browser geometry needs the built WASM runtime; use
 
 ### bSDD in the browser
 
-Profile and Dictionary searches class names such as `IfcWindow`; the search box
+**Profile and dictionary** searches class names such as `IfcWindow`; the search box
 is not a dictionary-URI selector. Search and class-definition requests use the
 viewer's same-origin `/api/bsdd` route. The Vite development server and the
 Vercel deployment already proxy this route to `https://api.bsdd.buildingsmart.org`.

@@ -11,6 +11,7 @@
  */
 
 import '@/lib/placement-edit.boot';
+import { sourceWatermark } from '@/utils/source-watermark';
 import { readFileSync } from 'node:fs';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { RemeshRequest, RemeshResult, StyleWire } from '@ifc-lite/geometry/remesh';
@@ -65,7 +66,7 @@ export async function seedAuthoringSample(options: { editEnabled?: boolean; byte
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
       shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }, hasLargeCoordinates: false },
   } as unknown as GeometryResult;
-  const model = { ...fixtureModel(SAMPLE_MODEL), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
+  const model = { ...fixtureModel(SAMPLE_MODEL), maxExpressId: sourceWatermark(dataStore), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
   const view = new MutablePropertyView(dataStore.properties || null, SAMPLE_MODEL);
   remeshRequests.length = 0;
   setRemeshClientFactory(async () => new ScriptedClient());

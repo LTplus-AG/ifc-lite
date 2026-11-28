@@ -27,26 +27,12 @@ function resolveEntityRefFromState(
     return { modelId: resolved.modelId, expressId: resolved.expressId };
   }
 
-  // A #5050 streamed federation publishes one component at a time after its
-  // range has been reserved, but before its final semantic document is ready
-  // to enter `models`. Preserve store/overlay precedence above; only this
-  // short-lived, published-but-not-yet-installed window needs the registry.
-  // Without it a pick on the new component is attributed to the anchor by the
-  // single-model fallback below.
-  const progressive = federationRegistry.fromGlobalId(globalId);
-  if (progressive) return progressive;
+  // A streaming model can publish geometry before its semantic document or
+  // final parse range enters the store (#5050). Require published ownership.
+  const published = federationRegistry.fromGlobalId(globalId);
+  if (published) return published;
 
-  // Fallback: single-model mode where offset is 0 → globalId === expressId,
-  // including a primary model still streaming (placeholder range). Behind a
-  // removed model the offset is not 0, and a negative or non-integer id is
-  // no model's (#11527: each became an unpublished local id the next
-  // toGlobalId refused); those take the legacy sentinel.
-  const first = state.models.entries().next();
-  if (!first.done && (first.value[1].idOffset ?? 0) === 0 && Number.isSafeInteger(globalId) && globalId >= 0) {
-    return { modelId: first.value[0], expressId: globalId };
-  }
-
-  // Legacy single-model mode (no models in federation map yet), or an id the fallback cannot vouch for.
+  // Legacy single-model mode or an ID with no known owner.
   // 'legacy' is recognized by PropertiesPanel for fallback to legacy ifcDataStore.
   return { modelId: 'legacy', expressId: globalId };
 }
@@ -56,10 +42,8 @@ function resolveEntityRefFromState(
  *
  * Resolution order:
  *  1. resolveGlobalIdFromModels (offset-based range check — the canonical path)
- *  2. The federation registry, for a published component not yet in `models` (#5050)
- *  3. First loaded model as fallback when it sits at offset 0, for a non-negative id
- *  4. 'legacy' sentinel: legacy single-model mode (no federation map), or an id
- *     the fallback cannot vouch for (#11527)
+ *  2. The federation registry for published IDs outside the store ranges
+ *  3. 'legacy' sentinel for legacy single-model mode or an unowned ID
  *
  * ALWAYS returns an EntityRef — never null.  This ensures all callers
  * (multi-select, basket, context menu) can proceed without null-guards.

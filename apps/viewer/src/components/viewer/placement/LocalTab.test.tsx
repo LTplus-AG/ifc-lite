@@ -10,6 +10,7 @@ import { useModelPlacementSync } from '../useModelPlacementSync';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { act } from 'react';
 import { render, cleanup, click, type, press, settle } from '@/test/render';
+import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
@@ -416,8 +417,6 @@ describe('model repositioning user interactions (#4226)', () => {
 
   it('offers a moving model with a visible renderer-only instance and hidden baked geometry (#11419)', () => {
     const renderer = new Renderer(document.createElement('canvas'));
-    mock.method(renderer.getScene(), 'getInstancedEntityIds', function* () { yield 7; });
-    mock.method(renderer.getScene(), 'getInstancedEntityCount', () => 1);
     const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } };
     const geometryResult: GeometryResult = {
       meshes: [{
@@ -427,6 +426,9 @@ describe('model repositioning user interactions (#4226)', () => {
       totalTriangles: 1, totalVertices: 3,
       coordinateInfo: { originShift: bounds.min, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false },
     };
+    const { scene } = appearanceInstanceScene([{ ...geometryResult.meshes[0], modelIndex: 0, expressId: 7 }]);
+    mock.method(renderer, 'getScene', () => scene);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [7]);
     const moving = fixtureModel('ifc', { entities: [{ expressId: 5, type: 'IfcWall' }, { expressId: 7, type: 'IfcWall' }] });
     try {
       setGlobalRendererRef({ current: renderer });

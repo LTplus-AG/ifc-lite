@@ -42,11 +42,14 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import {
   GraphicOverrideEngine,
   ifcTypeCriterion,
+  propertyCriterion,
   FIRE_SAFETY_PRESET,
   STRUCTURAL_PRESET,
   type Drawing2D,
   type GraphicOverrideRule,
 } from '@ifc-lite/drawing-2d';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import useDrawingExport from './useDrawingExport.js';
 
@@ -270,8 +273,9 @@ function Harness({ ifcDataStore, rules, onReady }: HarnessProps): null {
 async function exportSvg(
   ifcDataStore: IfcDataStore | null,
   rules: GraphicOverrideRule[],
+  models: ReturnType<typeof useViewerStore.getState>['models'] = new Map(),
 ): Promise<string> {
-  useViewerStore.setState({ models: new Map() });
+  useViewerStore.setState({ models });
   const container = document.createElement('div');
   document.body.appendChild(container);
   let root: Root | null = null;
@@ -333,6 +337,35 @@ describe('useDrawingExport — property criteria reach the real model', () => {
       '#BASEBASE',
       'the harness and engine must resolve a non-property rule even with no store, isolating the rest of this file to the property path',
     );
+  });
+
+  it('exports the parsed, edited, and deleted FireRating with an attached view (#11640)', async () => {
+    const store = await parseFixture();
+    const model = { ...fixtureModel('wall'), maxExpressId: SPACE_ID, ifcDataStore: store };
+    const models = new Map([[model.id, model]]);
+    const previous = useViewerStore.getState();
+    const view = new MutablePropertyView(null, model.id);
+    const rules = ['REI 120', 'REI 60'].map((rating, i) => ({
+      id: rating, name: rating, enabled: true, priority: 100,
+      criteria: propertyCriterion('FireRating', 'equals', rating, 'Pset_WallCommon'),
+      style: { fillColor: ['#FF0000', '#0066FF'][i] },
+    }));
+    try {
+      useViewerStore.setState({ mutationViews: new Map([[model.id, view]]) });
+      assert.equal(fillOf(await exportSvg(store, rules, models), WALL_ID), '#FF0000');
+      const sessionRule = { ...rules[0], criteria: propertyCriterion('SessionOnly', 'equals', 'added') };
+      view.setProperty(WALL_ID, 'Pset_WallCommon', 'SessionOnly', 'added');
+      assert.equal(fillOf(await exportSvg(store, [sessionRule], models), WALL_ID), '#FF0000');
+      assert.ok(view.deleteProperty(WALL_ID, 'Pset_WallCommon', 'SessionOnly'));
+      assert.equal(fillOf(await exportSvg(store, [sessionRule], models), WALL_ID), UNMATCHED_FILL);
+      assert.equal(view.hasChanges(WALL_ID), false);
+      view.setProperty(WALL_ID, 'Pset_WallCommon', 'FireRating', 'REI 60');
+      assert.equal(fillOf(await exportSvg(store, rules, models), WALL_ID), '#0066FF');
+      assert.ok(view.deleteProperty(WALL_ID, 'Pset_WallCommon', 'FireRating'));
+      assert.equal(fillOf(await exportSvg(store, rules, models), WALL_ID), UNMATCHED_FILL);
+    } finally {
+      useViewerStore.setState({ models: previous.models, mutationViews: previous.mutationViews });
+    }
   });
 
   it("Structural Highlight's LoadBearing rule matches the real parsed model", async () => {

@@ -8,7 +8,7 @@ The IFClite server processes IFC files on a high-performance Rust backend, provi
 
 - **Content-Addressable Caching** - Same file = instant response (skip upload entirely)
 - **Parallel Processing** - Multi-core geometry extraction with Rayon
-- **Parquet Format** - roughly 15-50x smaller payloads than JSON
+- **Parquet Format** - smaller payloads than JSON (see [Performance](performance.md))
 - **SSE Streaming** - Progressive geometry for immediate rendering
 - **Full Data Model** - Properties, quantities, and spatial hierarchy computed upfront
 
@@ -117,7 +117,7 @@ console.log('Server status:', health.status);
 ### 3. Parse a File
 
 ```typescript
-// Parquet format (~15x smaller than JSON)
+// Parquet format (a smaller payload than JSON)
 const result = await client.parseParquet(file);
 
 console.log(`Meshes: ${result.meshes.length}`);
@@ -132,8 +132,8 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v1/parse` | POST | Full parse, JSON response |
-| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller); `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
-| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload; `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
+| `/api/v1/parse/parquet` | POST | Full parse, Parquet response (smaller than JSON); `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
+| `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (quantized and deduplicated, smaller again); also produces the data model, like `/parse/parquet`; `?sha256=` replays a cache hit with no upload; `?data_model_entities=rooted` writes the [rooted-only data model](#rooted-only-entities-table-opt-in) |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
 | `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload; `?parquet_layout=shared-shapes&stream_shapes=cross-batch` shares shapes across batches (see [below](#sharing-across-stream-batches-opt-in)); `?data_model_entities=rooted` fills the [rooted-only data model](#rooted-only-entities-table-opt-in) |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
@@ -220,9 +220,13 @@ import { IfcServerClient } from '@ifc-lite/server-client';
 
 const client = new IfcServerClient({
   baseUrl: 'http://localhost:3001',
-  timeout: 300000  // 5 minutes (default)
+  timeout: 300000,  // 5 minutes (default)
+  token: 'my-token' // optional; sent as `Authorization: Bearer <token>`
 });
 ```
+
+Set `token` when the server runs with `IFC_SERVER_API_TOKEN`; without it the
+parse and cache routes answer `401`.
 
 ### Parse Methods
 
@@ -233,7 +237,7 @@ a Parquet cache probe, the client stops without starting an upload.
 
 #### parseParquet (Recommended)
 
-Best for most use cases - roughly 15x smaller payloads than JSON.
+Best for most use cases - smaller payloads than JSON.
 
 ```typescript
 const result = await client.parseParquet(file);
@@ -249,7 +253,7 @@ const result = await client.parseParquet(file);
 
 #### parseParquetOptimized
 
-Roughly 50x smaller payloads using integer quantization (0.1mm precision).
+Smaller payloads than `parseParquet`, using integer quantization (0.1mm precision) and mesh deduplication.
 
 ```typescript
 const result = await client.parseParquetOptimized(file);
@@ -586,6 +590,8 @@ interface EntityMetadata {
   name?: string;
   description?: string;
   object_type?: string;
+  tag?: string;              // element Tag; absent from older servers
+  predefined_type?: string;  // PredefinedType token, dots stripped
   has_geometry: boolean;
 }
 ```
@@ -603,6 +609,9 @@ interface Property {
   property_name: string;
   property_value: string;
   property_type: string;
+  data_type?: string;        // raw IFC value type, e.g. 'IFCLENGTHMEASURE'
+  data_type_mixed?: true;    // IfcPropertyTableValue: no single data_type
+  values?: string[];         // candidate values of a multi-valued property
 }
 ```
 
@@ -706,8 +715,9 @@ world_vertex = origin + R * position
 ```
 
 Both values in the same Y-up metres frame as the positions. On a model with
-repeats this is typically 2.4x to 4.8x smaller; a model with nothing to share is
-unchanged apart from the identity rotation columns.
+repeats the geometry payload is markedly smaller (a server test holds it to at
+most 40% of the default layout on a real architectural model); a model with
+nothing to share is unchanged apart from the identity rotation columns.
 
 **It is opt-in, and it must stay that way.** The layout renders incorrectly on a
 client that does not apply the rotation — every occurrence of a shared shape
@@ -820,7 +830,9 @@ Cache keys are derived from file content:
 
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
-# quality appends a "-q{level}" suffix after it
+# quality appends a "-q{level}" suffix after it, and layer_slicing=true a
+# "-layers" suffix after that
+{SHA256}-{filter}-json-v7             # POST /parse JSON response
 {SHA256}-{filter}-parquet-v8          # Geometry (default layout)
 {SHA256}-{filter}-parquet-v9          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v6 # Metadata header
@@ -906,8 +918,7 @@ sequenceDiagram
 | Upload | Always | **Skipped entirely on a hit** (hash check first) |
 
 On a cache hit the server does no parsing at all: the response is a disk read
-plus network transfer, so repeat loads are typically orders of magnitude
-faster than the first load.
+plus network transfer, so repeat loads are much faster than the first load.
 
 ## Server Configuration
 
@@ -922,8 +933,8 @@ faster than the first load.
 | `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory path |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout in seconds |
 | `IFC_STREAM_IDLE_TIMEOUT_SECS` | 600 | Close a streaming connection after this many seconds with no socket-write progress; `0` disables |
-| `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch size |
-| `MAX_BATCH_SIZE` | 1000 | Streaming maximum batch size |
+| `INITIAL_BATCH_SIZE` | 100 | Geometry jobs in the first streamed batch |
+| `MAX_BATCH_SIZE` | 1000 | Geometry jobs in every later streamed batch |
 | `CACHE_MAX_AGE_DAYS` | 7 | Read but not applied: the server does not expire cache entries by age |
 | `CORS_ORIGINS` | localhost dev origins | Allowed CORS origins (comma-separated, `*` for all) |
 | `IFC_SERVER_API_TOKEN` | unset | Optional bearer token for parse/cache routes (falls back to `API_TOKEN`) |
@@ -990,11 +1001,12 @@ has no Fly.io or Kubernetes manifests; write those for your own platform.
 
 ### Dynamic Batch Sizing
 
-The server uses dynamic batch sizing for optimal streaming:
+The streaming routes deliver geometry in two batch sizes:
 
-- **Initial batch**: 100 entities (fast first frame)
-- **Growth**: Increases based on processing speed
-- **Maximum**: 1000 entities per batch
+- **First batch**: `INITIAL_BATCH_SIZE` geometry jobs (default 100), for a fast first frame
+- **Every later batch**: `MAX_BATCH_SIZE` geometry jobs (default 1000)
+
+The size does not adapt to processing speed.
 
 ### Streaming Flow
 
@@ -1200,7 +1212,7 @@ for await (const event of client.parseStream(file)) {
 ### Network
 
 1. **Gzip Compression** - Applied on upload by `parse()`, and by `parseParquet()` for files up to 50 MiB (50 × 1024 × 1024 bytes) sent to a base URL that contains neither `localhost` nor `127.0.0.1`
-2. **Parquet Format** - roughly 15-50x smaller than JSON
+2. **Parquet Format** - smaller than JSON (see [Performance](performance.md))
 3. **SSE Streaming** - No polling overhead
 
 ## Error Handling
@@ -1313,10 +1325,14 @@ the same error for the same condition.
 try {
   await client.health();
 } catch (error) {
-  if (error.message.includes('ECONNREFUSED')) {
-    console.error('Server not running');
-  } else if (error.message.includes('timeout')) {
+  // health() aborts after the client's `timeout` with a TimeoutError.
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
     console.error('Server not responding');
+  } else if (error instanceof TypeError) {
+    // fetch rejects with a TypeError when it cannot connect at all.
+    console.error('Server not reachable');
+  } else {
+    throw error;
   }
 }
 ```

@@ -133,6 +133,8 @@ nav:
     - Developer Workflows: guide/developer-workflows.md
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Configuring a Deployment: guide/viewer-deployment-config.md
+    - Embedding the Viewer: guide/embedding.md
+    - Environment Variables: guide/environment-variables.md
     - SpaceMouse via the 3Dconnexion Driver: guide/spacemouse-driver.md
     - Cloud Sources: guide/cloud-sources.md
     - Model Registry (Experimental): guide/local-registry.md
@@ -228,8 +230,11 @@ nav:
     - Real-Time Collaboration: guide/collaboration.md
     - Collab Engine (API): guide/collaboration-api.md
     - Collaboration Server: guide/collab-server.md
+    - Layer Stack: guide/layer-stack.md
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
+    - Location Zones: guide/location-zones.md
+    - Construction Schedule (4D): guide/construction-schedule.md
     - Schedule Import: guide/schedule-import.md
     - Cost Panel: guide/cost-panel.md
     - Charts: guide/charts.md

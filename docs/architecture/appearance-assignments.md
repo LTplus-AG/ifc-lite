@@ -1,6 +1,6 @@
 # Coordinated appearance assignments
 
-F7 is being implemented as a stack under [#4420](https://github.com/LTplus-AG/ifc-lite/issues/4420).
+F7 shipped as a stack under [#4420](https://github.com/LTplus-AG/ifc-lite/issues/4420) (closed as completed).
 The existing Appearance workspace now captures several scopes, previews them
 together, and publishes one coordinated Apply/Undo/Redo across their models.
 No new public package API or alternate IFC writer is introduced. See the

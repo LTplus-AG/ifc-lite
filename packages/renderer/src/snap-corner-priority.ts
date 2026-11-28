@@ -12,6 +12,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3 } from './raycaster.js';
 import { ChunkedSort } from './snap-chunked-sort.js';
 import type { Camera } from './camera.js';
+import { edgeProjector } from './snap-project-edge.js';
 
 /** A piece with more triangles than this is built after the others: its snap cache is one uninterruptible step. */
 export const BIG_PIECE_TRIANGLES = 20_000;
@@ -73,9 +74,39 @@ export class PriorityOrder {
 
   private *build(): Generator<void> {
     const { pieces, dist, onScreen, big, eye } = this;
-    const inView = (p: Vec3) => {
-      const s = this.camera.projectToScreen(p, this.viewport.width, this.viewport.height);
-      return !!s && s.x >= 0 && s.y >= 0 && s.x <= this.viewport.width && s.y <= this.viewport.height;
+    const { width, height } = this.viewport;
+    const projectEdge = edgeProjector(this.camera, width, height);
+    // The projected footprint can cross the viewport without any corner inside it.
+    // Its screen bounds need at most twelve depth-clipped edges, independent of mesh size.
+    const reachesView = (box: Float64Array, center: Vec3) => {
+      const middle = this.camera.projectToScreen(center, width, height);
+      if (middle && middle.x >= 0 && middle.x <= width && middle.y >= 0 && middle.y <= height) return true;
+      const corners = Array.from({ length: 8 }, (_, k) => ({
+        x: box[k & 1 ? 3 : 0], y: box[k & 2 ? 4 : 1], z: box[k & 4 ? 5 : 2],
+      }));
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      const include = (point: { x: number; y: number }) => {
+        left = Math.min(left, point.x); right = Math.max(right, point.x);
+        top = Math.min(top, point.y); bottom = Math.max(bottom, point.y);
+        return left <= width && right >= 0 && top <= height && bottom >= 0;
+      };
+      let clippedMask = 0;
+      for (let k = 0; k < corners.length; k++) {
+        const point = this.camera.projectToScreen(corners[k], width, height);
+        if (!point) clippedMask |= 1 << k;
+        else if (include(point)) return true;
+      }
+      if (!clippedMask) return false;
+      // A depth-clipped box can acquire new extrema at the near or far plane.
+      for (let k = 0; k < corners.length; k++) {
+        for (const axis of [1, 2, 4]) {
+          const other = k | axis;
+          if (other === k || !(clippedMask & ((1 << k) | (1 << other)))) continue;
+          const edge = projectEdge(corners[k], corners[other]);
+          if (edge && (include(edge.sa) || include(edge.sb))) return true;
+        }
+      }
+      return false;
     };
     const pieceAt = (i: number) => i < pieces.length ? pieces[i] : this.occurrences[i - pieces.length];
     const idx = new Int32Array(dist.length);
@@ -85,9 +116,7 @@ export class PriorityOrder {
       const b = this.occurrenceBounds?.get(piece) ?? (yield* pieceBounds(piece));
       const cx = (b[0] + b[3]) / 2, cy = (b[1] + b[4]) / 2, cz = (b[2] + b[5]) / 2;
       dist[i] = (cx - eye.x) ** 2 + (cy - eye.y) ** 2 + (cz - eye.z) ** 2;
-      let on = inView({ x: cx, y: cy, z: cz });
-      for (let k = 0; k < 8 && !on; k++) on = inView({ x: b[k & 1 ? 3 : 0], y: b[k & 2 ? 4 : 1], z: b[k & 4 ? 5 : 2] });
-      onScreen[i] = on ? 1 : 0;
+      onScreen[i] = reachesView(b, { x: cx, y: cy, z: cz }) ? 1 : 0;
       big[i] = piece.indices.length / 3 > BIG_PIECE_TRIANGLES ? 1 : 0;
       yield;
     }

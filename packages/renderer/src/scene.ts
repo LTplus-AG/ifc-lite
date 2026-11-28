@@ -61,6 +61,7 @@ import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkin
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { entityIdSetsEqual } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { BatchUseFrames, residentCpuBytes, selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
@@ -2845,7 +2846,9 @@ export class Scene {
   }
 
   setInstancedVisible(visible: boolean): void {
+    if (this.instancedVisible === visible) return;
     this.instancedVisible = visible;
+    this.bumpPickGeometryRevision();
   }
 
   /** GPU-instancing templates for the renderer's instanced draw pass. Empty when
@@ -3078,7 +3081,8 @@ export class Scene {
 
   /** All instanced occurrence express_ids (for CPU consumers that enumerate geometry,
    *  e.g. the raycast-engine and exporters). */
-  *getInstancedEntityIds(): IterableIterator<number> {
+  *getInstancedEntityIds(drawnPassOnly = false): IterableIterator<number> {
+    if (drawnPassOnly && !this.instancedVisible) return;
     for (const id of this.instancedEntityMap.keys()) if (!this.instanceSuppression.has(id)) yield id;
   }
 
@@ -3111,11 +3115,8 @@ export class Scene {
     return this.boundingBoxes.get(expressId) ?? null;
   }
 
-  /** Lazily materialize per-occurrence world-space MeshData for an instanced entity
-   *  (template geometry × each occurrence's matrix). NOT retained — built on demand
-   *  for CPU consumers that need triangles (exact raycast / measure / section-face /
-   *  export). Returns undefined if the id is not instanced. */
   *snapOccurrences() {
+    if (!this.instancedVisible) return;
     for (const [expressId, occurrences] of this.instancedEntityMap) {
       for (const location of occurrences) {
         const template = this.instancedTemplateCpu[location.templateIndex];
@@ -3125,6 +3126,10 @@ export class Scene {
     }
   }
 
+  /** Lazily materialize per-occurrence world-space MeshData for an instanced entity
+   *  (template geometry × each occurrence's matrix). NOT retained — built on demand
+   *  for CPU consumers that need triangles (exact raycast / measure / section-face /
+   *  export). Returns undefined if the id is not instanced. */
   getInstancedMeshDataPieces(expressId: number): MeshData[] | undefined {
     const occ = this.instancedEntityMap.get(expressId);
     if (!occ || occ.length === 0 || this.instanceSuppression.has(expressId)) return undefined;
@@ -3145,17 +3150,8 @@ export class Scene {
     // (the common orbit case, especially the empty set) so we skip both the per-frame
     // writeBuffer loops AND the `new Set(...)` allocation — equal sizes + full
     // containment ⇒ set equality. The item filter is cheap to compare directly.
-    let changed = expressIds.size !== this.instancedSelected.size;
-    if (!changed) {
-      for (const eid of expressIds) {
-        if (!this.instancedSelected.has(eid)) {
-          changed = true;
-          break;
-        }
-      }
-    }
     const itemFilterChanged = itemFilterExpressId !== this.instancedSelectedItemExpressId || itemFilterItemId !== this.instancedSelectedItemId;
-    if (!changed && !itemFilterChanged) return;
+    if (!itemFilterChanged && entityIdSetsEqual(expressIds, this.instancedSelected)) return;
     // Re-derive the combined flag lane (selected | hidden) for every occurrence whose
     // selected-membership flips, so we never clobber the hidden bit.
     const prev = this.instancedSelected;
@@ -3235,16 +3231,7 @@ export class Scene {
       if (!isEntityVisible(eid, hiddenIds, isolatedIds)) next.add(eid);
     }
     // Fast-path: unchanged hidden set → nothing to write.
-    let changed = next.size !== this.instancedHidden.size;
-    if (!changed) {
-      for (const eid of next) {
-        if (!this.instancedHidden.has(eid)) {
-          changed = true;
-          break;
-        }
-      }
-    }
-    if (!changed) return;
+    if (entityIdSetsEqual(next, this.instancedHidden)) return;
     const prev = this.instancedHidden;
     this.instancedHidden = next;
     for (const eid of prev) {

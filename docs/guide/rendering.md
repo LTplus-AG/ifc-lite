@@ -1220,7 +1220,9 @@ primary-model only: disable it (`enableInstancing: false` on the
 Consumers that cache the IDs from `SceneContents.getInstancedEntityIds()` can
 read `getInstancedEntityRevision?.()` when `onGeometryChange` fires. Model
 translation and rotation leave the membership revision stable. Uploads,
-removals, and occurrence suppression can change it.
+removals, and occurrence suppression can change it. Pass `true` to
+`getInstancedEntityIds` to enumerate only while the instanced pass is drawn.
+Switching to Types view hides those occurrences from ray picks and screen snaps.
 
 ## Annotation Overlays
 

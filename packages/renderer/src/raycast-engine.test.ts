@@ -394,6 +394,11 @@ describe('RaycastEngine.raycastScene', () => {
     assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
       geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
     { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
+    scene.setInstancedVisible(false);
+    assert.equal(engine.raycastScene(400, 300), null, 'Types view excludes the instance from direct ray picks');
+    assert.deepEqual([...scene.getInstancedEntityIds()], [1_025], 'the occurrence is still owned');
+    scene.setInstancedVisible(true);
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 1_025);
   });
 
   it('#11753 selects each of two welded feature corners 40 micrometres apart at zoom', () => {
@@ -462,19 +467,72 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(idle.pending, 1);
     const target = settle().snapTarget;
     assert.equal(target?.expressId, 1025);
-    assert.equal(target?.type, 'vertex');
-    assert.deepEqual(target?.position, { x: 3, y: 12, z: 0 });
+    assert.ok(target);
+    assert.equal(target.type, 'vertex');
+    assert.deepEqual(target.position, { x: 3, y: 12, z: 0 });
     const markers = engine.cornerMarkers.get();
     assert.ok(markers && markers.activeIndex >= 0);
     const active = markers.candidates[markers.activeIndex];
-    assert.equal(active.expressId, target?.expressId);
-    assert.deepEqual(active.position, target?.position);
+    assert.equal(active.expressId, target.expressId);
+    assert.deepEqual(active.position, target.position);
+    scene.setInstancedVisible(true);
+    assert.equal(run().snapTarget?.expressId, 1025, 'an unchanged pass keeps the warm index');
+    scene.setInstancedVisible(false);
+    assert.equal(scene.getInstancedTemplates().length, 0, 'Types view hides the draw pass');
+    assert.equal(run().snapTarget, null, 'the first hidden pick discards the visible index');
+    assert.equal(engine.cornerMarkers.get(), null);
+    assert.equal(settle().snapTarget, null, 'a settled Types view excludes the occurrence');
+    assert.equal(engine.cornerMarkers.get(), null);
+    scene.setInstancedVisible(true);
+    assert.deepEqual(settle().snapTarget?.position, target.position, 'Model view restores the transformed corner');
+    const restored = engine.cornerMarkers.get();
+    assert.deepEqual(restored?.candidates[restored.activeIndex], active);
     assert.equal(settle({ hiddenIds: new Set([1025]) }).snapTarget, null);
     assert.equal(engine.cornerMarkers.get(), null);
     assert.equal(settle({ isolatedIds: new Set([99]) }).snapTarget, null);
     assert.equal(settle({}, new Set([8])).snapTarget, null);
     assert.equal(settle({ isolatedIds: new Set([1025]) }, new Set([7])).snapTarget?.expressId, 1025);
   });
+
+  for (const field of ['hiddenIds', 'isolatedIds'] as const) {
+    it(`#11753 keeps the run-start ${field} during sliced occurrence discovery`, () => {
+      const scene = new Scene();
+      const shard = instancedTriangle(1025);
+      const other = { ...shard.instances[0], entityId: 1026, transform: shard.instances[0].transform.slice() };
+      other.transform[3] = 15;
+      shard.instances.push(other);
+      scene.addInstancedShard(instancedDevice(), shard, 7);
+      const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+      const initialMember = field === 'isolatedIds' ? 1025 : 1026;
+      const original = new Set([initialMember]);
+      const current = new Set(original);
+      function picker() {
+        const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+        const pick = (x: number, ids: Set<number>) => {
+          const at = camera.projectToScreen({ x, y: 5, z: 0 }, 800, 600)!;
+          return engine.raycastSceneMagnetic(at.x, at.y - 5,
+            { edge: null, meshExpressId: null, lockStrength: 0 },
+            { [field]: ids, snapOptions: { screenCornerSnap: { idleHost: idle, settleMs: 0 } } }).snapTarget?.expressId;
+        };
+        return { idle, pick };
+      }
+      const fresh = picker();
+      fresh.pick(0, current);
+      fresh.idle.drain();
+      const expected = [fresh.pick(0, current), fresh.pick(15, current)];
+      assert.deepEqual(expected, [1025, undefined]);
+      const sliced = picker();
+      sliced.pick(0, original);
+      assert.ok(sliced.idle.tick(0));
+      sliced.pick(0, current);
+      original.clear();
+      original.add(initialMember === 1025 ? 1026 : 1025);
+      sliced.idle.drain();
+      original.clear();
+      original.add(initialMember);
+      assert.deepEqual([sliced.pick(0, current), sliced.pick(15, current)], expected);
+    });
+  }
 
   it('#11753 builds an on-screen GPU corner before offscreen flat geometry', t => {
     const scene = new Scene();
@@ -1137,6 +1195,70 @@ describe('RaycastEngine flat index (#9504)', () => {
 });
 
 describe('RaycastEngine readback meshes (#10264)', () => {
+  it('#11753 snaps the prepared readback corner only within the covered ray and view', () => {
+    const scene = new Scene(), quad = makeQuad({ expressId: 17, modelIndex: 3 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    scene.releaseGeometryData();
+    const corner = { x: 5, y: 5, z: 0 };
+    const at = camera.projectToScreen(corner, 800, 600)!;
+    // Five pixels inward on each axis: the ray hits the face, about seven pixels from its vertex.
+    const cursor = { x: at.x - 5, y: at.y + 5 };
+    const run = (x = cursor.x, hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(x, cursor.y,
+      { edge: null, meshExpressId: null, lockStrength: 0 }, { hiddenIds, snapOptions: {
+        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { settleMs: 0, idleHost: idle },
+      } });
+    const prepared = { ...quad, positions: quad.positions.slice() };
+    engine.setReadbackMeshes([prepared], cursor);
+    assert.equal(run().snapTarget?.type, 'face');
+    idle.drain();
+    assert.deepEqual(run().snapTarget?.position, corner);
+    assert.equal(run().snapTarget?.type, 'vertex');
+    assert.equal(run(cursor.x - 2).snapTarget, null, 'a neighbouring uncovered ray cannot reuse the warm grid');
+    run(); idle.drain();
+    assert.equal(run(cursor.x, new Set([17])).snapTarget, null);
+    camera.setPosition(0, 0, 51);
+    assert.equal(run().snapTarget, null);
+    engine.setReadbackMeshes([{ ...prepared, expressId: 18 }], cursor);
+    run(); idle.drain();
+    assert.equal(run().snapTarget?.expressId, 18);
+    run(cursor.x, new Set([18]));
+    assert.equal(idle.pending, 1);
+    engine.setReadbackMeshes(null);
+    assert.equal(idle.pending, 0, 'clearing a prepared inventory cancels its pending build');
+    assert.equal(run().snapTarget, null);
+  });
+
+  it('#11753 NaN settle time waits through camera motion and builds after 120 quiet milliseconds', t => {
+    const scene = new Scene();
+    addRegularQuad(scene, makeQuad({ expressId: 19 }));
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    let now = 0;
+    t.mock.method(performance, 'now', () => now);
+    const builds = t.mock.method(engine.getSnapDetector(), 'startGeometryCache');
+    const pick = () => {
+      const at = camera.projectToScreen({ x: 5, y: 5, z: 0 }, 800, 600)!;
+      return engine.raycastSceneMagnetic(at.x + 5, at.y, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { screenCornerSnap: { settleMs: NaN, idleHost: idle } } });
+    };
+    for (let i = 1; i <= 12; i++) {
+      now += 16;
+      camera.setPosition(0, 0, 50 + i);
+      assert.equal(pick().snapTarget, null);
+      assert.ok(idle.tick());
+      assert.equal(builds.mock.callCount(), 0);
+    }
+    now += 119;
+    idle.tick();
+    assert.equal(builds.mock.callCount(), 0);
+    now++;
+    idle.drain();
+    assert.equal(pick().snapTarget?.expressId, 19);
+    assert.deepEqual(pick().snapTarget?.position, { x: 5, y: 5, z: 0 });
+  });
+
   it('raycasts and snaps released geometry read back from storage, under hide/isolate, and clears', () => {
     const scene = new Scene();
     const resident = makeQuad({ expressId: 1, translate: [0, 0, -10] });

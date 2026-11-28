@@ -53,7 +53,19 @@ export class InstanceInventory {
   readonly bounds = new Map<MeshData, Float64Array>();
   readonly builds = new Map<MeshData, Generator<void>>();
 
-  *discover(occurrences: Iterable<Occurrence | null>, ctx: BuildContext, grid: CornerGrid,
+  discover(occurrences: Iterable<Occurrence | null>, ctx: BuildContext, grid: CornerGrid,
+    templates: WeakMap<object, PieceCandidates>) {
+    // An equivalent replacement context can keep this run alive after the host reuses its old sets.
+    const filters = {
+      hiddenIds: ctx.hiddenIds && new Set(ctx.hiddenIds),
+      isolatedIds: ctx.isolatedIds && new Set(ctx.isolatedIds),
+      eligible: ctx.eligible && new Set(ctx.eligible),
+    };
+    return this.discoverFiltered(occurrences, filters, grid, templates);
+  }
+
+  private *discoverFiltered(occurrences: Iterable<Occurrence | null>,
+    ctx: Pick<BuildContext, 'eligible' | 'hiddenIds' | 'isolatedIds'>, grid: CornerGrid,
     templates: WeakMap<object, PieceCandidates>) {
     for (const occurrence of occurrences) {
       yield;

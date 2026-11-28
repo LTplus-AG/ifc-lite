@@ -89,11 +89,12 @@ export function pointCloudSnapToleranceAt(t: number, camera: PointCloudSnapCamer
 /** A scan point overrides a selected snap only when clearly in front along the pick ray. */
 export function pointCloudWinsOverMeshSnap(
   pointHit: PointCloudRayResult, target: SnapTarget | null, ray: Ray, camera: PointCloudSnapCamera,
+  ordinaryFaceDepth?: number,
 ): boolean {
   if (!target) return true;
   const p = target.position;
-  const targetDepth = (p.x - ray.origin.x) * ray.direction.x
-    + (p.y - ray.origin.y) * ray.direction.y + (p.z - ray.origin.z) * ray.direction.z;
+  const targetDepth = ordinaryFaceDepth ?? ((p.x - ray.origin.x) * ray.direction.x
+    + (p.y - ray.origin.y) * ray.direction.y + (p.z - ray.origin.z) * ray.direction.z);
   return pointHit.distance < targetDepth - pointCloudSnapToleranceAt(pointHit.distance, camera);
 }
 

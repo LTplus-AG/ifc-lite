@@ -19,6 +19,8 @@ import {
 export interface PointCloudSnapArgs {
     ray: Ray;
     intersection: Intersection | null;
+    /** Screen-selected features and authored curves arbitrate at their own depth. */
+    useTargetDepth: boolean;
     options: (PickOptions & { snapOptions?: Partial<SnapOptions> }) | undefined;
     clip?: PickClipState | null;
     cameraFov: number;
@@ -47,8 +49,8 @@ export function withPointCloudSnap(
         ? queryPointClouds(provider, ray, snapCamera, maxPointDistance, options, clip)
         : null;
     if (pointHit) {
-        // The face bounded the search. The selected feature can be closer than that face.
-        if (pointCloudWinsOverMeshSnap(pointHit, magneticResult.snapTarget, ray, snapCamera)) {
+        const faceDepth = args.useTargetDepth ? undefined : maxPointDistance;
+        if (pointCloudWinsOverMeshSnap(pointHit, magneticResult.snapTarget, ray, snapCamera, faceDepth)) {
             magneticResult = {
                 snapTarget: {
                     type: SnapType.POINT_CLOUD,

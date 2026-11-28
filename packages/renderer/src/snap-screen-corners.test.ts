@@ -155,6 +155,30 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(sceneWith(boxA()), 370, 265, { snapOptions: vertexOnly }).snapTarget, null, 'vertex-only never returns an edge');
   });
 
+  it('#11753 uses ordinary face depth until the screen search supplies a target', () => {
+    const camera = cameraDownZ(), host = new ManualIdleHost();
+    const ray = camera.unprojectToRay(400, 300, 800, 600);
+    const z = (depth: number) => ray.origin.z - depth;
+    const triangle = { ...boxA(), positions: Float32Array.of(-0.25, 0, z(5), 0.25, -20, z(15), 0.25, 20, z(15)),
+      indices: Uint32Array.of(0, 1, 2) };
+    const engine = new RaycastEngine(camera, sceneWith(triangle), canvas);
+    const run = (screen = false) => engine.raycastSceneMagnetic(400, 300, lock, { snapOptions: {
+      ...base, snapToEdges: false, snapToFaces: false, screenSnapRadius: 4000,
+      ...(screen ? { screenCornerSnap: { settleMs: 0, idleHost: host } } : {}),
+    } });
+    const ordinary = run();
+    assert.ok(ordinary.intersection && Math.abs(ordinary.intersection.distance - 10) < 0.001);
+    assert.equal(ordinary.snapTarget?.type, 'vertex');
+    assert.ok(ordinary.snapTarget && Math.abs(ordinary.snapTarget.position.z - z(5)) < 0.001);
+    const scan = new PointCloudSpatialIndex(1);
+    scan.insertRange(Float32Array.of(ray.origin.x, ray.origin.y, z(8)), 1, null);
+    engine.setPointCloudProvider(() => [{ expressId: 77, index: scan }]);
+    assert.equal(run().snapTarget?.expressId, 77, 'ordinary scan wins against the face at 10');
+    assert.equal(run(true).snapTarget?.expressId, 77, 'a cold screen grid still used the ordinary target');
+    host.drain();
+    assert.equal(run(true).snapTarget?.expressId, 1, 'the settled screen vertex at 5 wins');
+  });
+
   it('#11753 compares scans against the off-ray snap depth', () => {
     const engine = new RaycastEngine(cameraDownZ(), sceneWith(boxA()), canvas), host = new ManualIdleHost();
     const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: { ...base,
@@ -537,6 +561,33 @@ describe('screen corner idle build (#11504)', () => {
     assert.equal(t.host.pending, 0, 'and a pick on the same view does not restart it');
   });
 
+  for (const mode of ['orthographic', 'perspective'] as const) {
+    it(`#11753 prioritizes a visible corner inside spanning bounds in ${mode} projection`, t => {
+      const visible = { ...boxA(), expressId: 7, positions: Float32Array.of(
+        0, 1, 0, -1000, -1000, 0, 1000, -1000, 0), indices: Uint32Array.of(0, 1, 2) };
+      const offscreen = Array.from({ length: 12 }, (_, i) =>
+        makeBox(100 + i, [100 + i, 0, 0], [101 + i, 1, 1]));
+      const h = harness([...offscreen, visible], { settleMs: 0 });
+      h.camera.setProjectionMode(mode);
+      const at = h.at(0, 1, 0);
+      const query = () => h.query(at.x, at.y - 5);
+      assert.equal(query(), null);
+      let slices = 0;
+      let hit = query();
+      while (!hit && slices < 200 && h.host.tick(0)) {
+        slices++;
+        hit = query();
+      }
+      assert.equal(hit?.expressId, 7);
+      assert.deepEqual(hit?.position, { x: 0, y: 1, z: 0 });
+      t.diagnostic(`visible snap after ${slices} exhausted slices and ${h.state.built.length - 1} offscreen builds`);
+      assert.deepEqual(h.state.built, [7]);
+      assert.ok(slices > 1);
+      h.host.drain();
+      assert.equal(h.state.built.length, 13);
+    });
+  }
+
   it('builds the pieces that reach the viewport first, nearest the camera first', () => {
     // Off-screen boxes come first in scene order; on-screen ones are at |x| = 0.5 .. 4.5 from the camera axis.
     const pieces: MeshData[] = [];
@@ -650,6 +701,26 @@ describe('screen corner idle build (#11504)', () => {
     t.host.drain();
     assert.equal(t.index.stats()!.complete, true, 'built once the view stopped');
     assert.ok(t.state.clock >= 9 * 16 + 100, 'only after the settle time');
+  });
+
+  it('#11753 fresh equal nonempty filters settle during repeated moves and genuine changes invalidate immediately', () => {
+    const t = harness(boxRow(2));
+    t.host.onWait = () => {};
+    const at = t.at(0, 0);
+    const pick = (hidden: number[]) => t.query(at.x, at.y, {
+      hiddenIds: new Set(hidden), isolatedIds: new Set([1, 2]), clip: { sectionExcludedIds: new Set([42]) },
+    });
+    for (let i = 0; i < 20; i++) {
+      t.state.clock += 16;
+      pick(i % 2 ? [42, 43] : [43, 42]);
+      t.host.tick();
+    }
+    assert.equal(pick([42, 43])?.expressId, 1);
+    assert.equal(t.index.stats()?.gridsStarted, 1);
+    assert.equal(pick([1, 43]), null, 'new same-size membership drops the warm result before idle');
+    t.host.onWait = ms => { t.state.clock += ms; };
+    t.host.drain();
+    assert.equal(pick([1, 43])?.expressId, 2);
   });
 
   it('a fresh empty set per pick (hidden ids, section-excluded ids) is not a view change', () => {

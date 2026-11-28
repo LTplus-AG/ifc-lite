@@ -82,8 +82,13 @@ identifiers explicitly.
 
 ### 3.2 What gets signed
 
-The **canonical content hash** of the bundle: a SHA-256 over a
-deterministic serialisation of `{ files: sorted-by-path }`. The
+The Ed25519 signature covers a versioned message built by
+`buildSigningMessage` (`packages/extensions/src/signing/sign.ts`):
+`"iflx-sig" 0x1f "v1" 0x1f <contentHash> 0x1f <signedAt>`. Including
+`signedAt` means neither field can be changed after signing.
+
+`contentHash` is the **canonical content hash** of the bundle: a SHA-256
+over a deterministic serialisation of `{ files: sorted-by-path }`. The
 serialisation:
 
 ```
@@ -236,9 +241,13 @@ if envelope.signature:
    compute canonical content hash
    if hash != signature.contentHash → SignatureMismatchError
    import public key from signature.publicKey
-   crypto.subtle.verify(signature.signature, contentHash)
+   message = buildSigningMessage(contentHash, signature.signedAt)
+     ("iflx-sig" 0x1f "v1" 0x1f contentHash 0x1f signedAt)
+   crypto.subtle.verify(ED25519_PARAMS, publicKey, signatureBytes, messageBytes)
    if fail → SignatureMismatchError
    if fingerprint(publicKey) ∈ revocation list → SignatureRevokedError
+      (planned: no revocation list or SignatureRevokedError exists yet;
+       verifyBundle computes the fingerprint up front for it)
    produce SignatureInfo for the loader / UI
 otherwise:
    no SignatureInfo; bundle is "unsigned"
@@ -295,6 +304,11 @@ get the cheerful row; new fingerprints get the cautious one. The user
 can review the history in a future "Signers" tab (post-Phase-5 UI).
 
 ### 6.3 Updates and version downgrade
+
+Planned: signer comparison and version-order checks. The viewer installer
+(`host-installer.ts`) records the signer fingerprint in the audit event and
+uses version inequality to decide whether to tear down the previous
+activation.
 
 When a user updates an extension:
 
@@ -391,8 +405,10 @@ Reports go to a small triage queue. Confirmed abuse:
 To ground the design, this RFC also ships the cryptographic kernel as
 code. What's in:
 
-- **`@ifc-lite/extensions/signing`** — `generateKeyPair`,
-  `exportPrivateKey`, `exportPublicKey`, `importKey`,
+- **Signing API** (`packages/extensions/src/signing/`, exported from the
+  `@ifc-lite/extensions` root; there is no `/signing` subpath) —
+  `generateKeyPair`, `exportPrivateKey`, `exportPublicKey`, `importKey`,
+  `importPublicKey`, `importPrivateKey`,
   `fingerprintFromBytes`, `compactFingerprint`, `signBundle`,
   `verifyBundle`, `canonicalContentHash`, plus `SignatureMismatchError`,
   `SignatureFormatError`, `KeyFormatError`.
@@ -408,6 +424,9 @@ What's deferred to the Phase-5 build:
 
 - The hosted registry service.
 - The TOFU history store in the viewer.
+- Update checks (§6.3): same-signer version ordering, the different-signer
+  warning and downgrade refusal.
+- The revoked-fingerprint kill-switch list (D4).
 - The "Signers" UI tab.
 - Multi-signature envelopes (key rotation transition).
 - Registry CI pipeline + lint suite.
@@ -461,5 +480,5 @@ the wild.
 - `05-flavors-and-sharing.md §7` — registry sketch for flavors (this
   RFC covers extensions; flavors compose extensions and inherit the
   same signing surface for any bundles they embed).
-- `09-implementation-plan.md` — Phase 5 task block (will be expanded
-  with the now-prototyped pieces).
+- The implementation plan (`09-implementation-plan.md`) was retired from
+  the repository in #3935; the Phase 5 task block lives in git history.

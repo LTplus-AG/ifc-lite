@@ -81,8 +81,8 @@ manifest + code + widget + tests generation
     │
     ▼
 static validation
-    │   - Zod schema for manifest
-    │   - widget DSL schema
+    │   - manifest validator (validateManifest)
+    │   - widget DSL validator (validateWidget)
     │   - capability grammar parse
     │   - no banned globals in code
     │   - no string-construction of capabilities
@@ -140,8 +140,8 @@ interface AuthoringPlan {
   summary: string;                 // one line for the chat
   rationale: string;               // one paragraph
   contributions: PlannedContribution[];
-  capabilities: Capability[];
-  triggers: ActivationEvent[];
+  capabilities: string[];          // raw capability strings
+  triggers: string[];              // activation events
   widgets: PlannedWidget[];
   tests: PlannedTest[];
   notes?: string;                  // open questions, assumptions
@@ -162,8 +162,9 @@ quality lift it produces is consistent across teams.
 The system prompt is generated from:
 
 - The current SDK's `NAMESPACE_SCHEMAS` (existing).
-- The manifest schema (Zod → JSON Schema → prompt text).
-- The widget DSL schema (same conversion).
+- The manifest schema (a compact hand-written form in
+  `buildAuthoringContract`, `packages/extensions/src/authoring/prompt.ts`).
+- The widget DSL node catalogue (same builder).
 - The capability catalogue (with risk annotations).
 - A fixed set of authoring-style rules (see §11).
 - The user's personal prompt overlay (see [§06-self-improvement.md]).
@@ -186,12 +187,12 @@ Before any sandboxed run, the generated bundle is checked locally:
 
 | Check | Tool |
 |---|---|
-| Manifest matches schema | `manifestSchema.safeParse()` (Zod) |
+| Manifest matches schema | `validateManifest()` (hand-rolled) |
 | All `entry.*` paths exist in the bundle | Bundle walker |
-| All widget files parse against the DSL | `widgetSchema.safeParse()` |
-| All `contributes.commands` referenced by widgets / toolbar exist | Cross-reference walker |
+| All widget files parse against the DSL | `validateWidget()` |
+| All `contributes.commands` referenced by widgets / toolbar exist | Cross-reference walker (`crossReferenceBundle`) |
 | Capabilities parse against the capability grammar | Capability parser |
-| Code has no banned globals (`globalThis`, `window`, `process`) | AST walker (`acorn`) |
+| Code has no banned globals (`globalThis`, `window`, `process`) | AST walker (`acorn`, `validateCode`) |
 | Code has no `eval`, `Function(...)`, dynamic import of non-bundle paths | AST walker |
 | Code never constructs a capability string from a runtime value | AST taint analysis (lightweight) |
 | All `network.fetch:*` capabilities have explicit host patterns | Capability parser |
@@ -216,7 +217,10 @@ adjust.
 
 ## 8. Repair loop
 
-We generalise the existing repair loop in `lib/llm/repair-loop.ts`:
+The extension repair loop ships as `runRepairLoop` in
+`packages/extensions/src/authoring/repair.ts` (separate from the
+one-shot script loop in `apps/viewer/src/lib/llm/repair-loop.ts`). Its
+shape, as a sketch:
 
 ```ts
 async function repairExtension(initial: Bundle, ctx: AuthoringCtx) {
@@ -239,10 +243,15 @@ async function repairExtension(initial: Bundle, ctx: AuthoringCtx) {
 
 Tunables (defaults):
 
-- `MAX_REPAIR_ATTEMPTS = 4`
-- Token budget per attempt: 6000 output, 32000 input.
-- Wall-clock budget per attempt: 90 seconds.
-- Total wall-clock budget for an authoring session: 6 minutes.
+- `maxAttempts`: 4
+- `attemptBudgetMs`: 90 seconds per attempt (each attempt gets the full
+  timeout).
+- `totalBudgetMs`: 6 minutes, checked before each attempt starts. The last
+  attempt can run past this budget. The per-turn timer applies to waiting for
+  the authoring response; response validation follows outside that timer.
+- Token budget per attempt (6000 output, 32000 input) is planned, not
+  enforced. An `AuthoringTurn` may carry a `tokens` estimate, but the loop
+  neither reads nor returns it.
 
 Diagnostics are *structured*. The model receives a JSON object with
 the failing manifest path, the validation error code, a hint, and a
@@ -362,7 +371,7 @@ indicator.
 
 | Failure | Detection | Handling |
 |---|---|---|
-| Manifest invalid JSON | Zod parse | Repair loop with parse error |
+| Manifest invalid JSON | JSON parse / `validateManifest` | Repair loop with parse error |
 | Capability outside catalogue | Grammar parse | Repair with allowed list |
 | Wildcard in `network.fetch` | Capability parser | Reject; ask model to scope |
 | Widget refs nonexistent command | Cross-reference walker | Repair with command list |

@@ -60,6 +60,7 @@ export const settingsDe = {
   "settings.privacy.analyticsOptOutHint": "Stoppt Nutzungs- und Fehlerereignisse sowie die Zählung von Seitenaufrufen aus diesem Browser sofort. Ab dem nächsten Laden der Seite werden die Analyse-Skripte gar nicht mehr geladen.",
   "settings.privacy.learnMore": "Datenschutzleitfaden lesen",
   "settings.privacy.toastDisclosure": "IFClite speichert ein Aktionsprotokoll auf Ihrem Gerät. Der gehostete Viewer sendet außerdem anonyme Produktanalysen, sofern Sie diese nicht in den Datenschutzeinstellungen deaktivieren.",
+  "settings.privacy.toastDisclosureStandalone": "Diese Seite sendet anonyme Produktanalysen. Zum Abmelden öffnen Sie im IFClite-Viewer Einstellungen → Datenschutz; der Datenschutzleitfaden erklärt, was gesendet wird.",
   "settings.privacy.toastAction": "Datenschutzeinstellungen",
   "settings.collaboration.identityTitle": "Ihre Identität",
   "settings.collaboration.displayName": "Anzeigename",

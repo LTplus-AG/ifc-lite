@@ -24,6 +24,7 @@ import { useTranslation } from '@/i18n';
 import { openSettings } from '@/lib/settings/open-settings';
 import { isPrivacyNoticeShown, markPrivacyNoticeShown } from '@/lib/analytics-consent';
 
+const NOTICE_PAINT_DELAY_MS = 250;
 const PRIVACY_GUIDE_URL = 'https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/privacy.md';
 
 /**
@@ -41,12 +42,23 @@ export function usePrivacyDisclosure(options: { standalone?: boolean } = {}): vo
     if (typeof window === 'undefined') return;
     if (isPrivacyNoticeShown()) return;
     // Defer slightly so the toast doesn't fight with the splash UI.
+    let marking: number | undefined;
     const handle = window.setTimeout(() => {
-      toast.info(t('settings.privacy.toastDisclosure'), standalone
-        ? { label: t('settings.privacy.learnMore'), onClick: () => { window.open(PRIVACY_GUIDE_URL, '_blank', 'noopener,noreferrer'); } }
-        : { label: t('settings.privacy.toastAction'), onClick: () => openSettings('privacy') });
-      markPrivacyNoticeShown();
+      if (standalone) {
+        toast.info(t('settings.privacy.toastDisclosureStandalone'), {
+          label: t('settings.privacy.learnMore'),
+          onClick: () => { window.open(PRIVACY_GUIDE_URL, '_blank', 'noopener,noreferrer'); },
+        });
+      } else {
+        toast.info(t('settings.privacy.toastDisclosure'), { label: t('settings.privacy.toastAction'), onClick: () => openSettings('privacy') });
+      }
+      // Recorded (and analytics started) a moment later, once the toast has
+      // been painted, not in the same task that queues it.
+      marking = window.setTimeout(markPrivacyNoticeShown, NOTICE_PAINT_DELAY_MS);
     }, 3500);
-    return () => window.clearTimeout(handle);
+    return () => {
+      window.clearTimeout(handle);
+      if (marking !== undefined) window.clearTimeout(marking);
+    };
   }, [host, t, standalone]);
 }

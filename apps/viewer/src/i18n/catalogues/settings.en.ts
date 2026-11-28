@@ -71,6 +71,7 @@ export const settingsEn = {
   'settings.privacy.analyticsOptOutHint': 'Stops usage events, error events and page-view counts from this browser at once. From the next page load, the analytics scripts are not loaded at all.',
   'settings.privacy.learnMore': 'Read the privacy guide',
   'settings.privacy.toastDisclosure': 'IFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.',
+  'settings.privacy.toastDisclosureStandalone': 'This page sends anonymous product analytics. To opt out, open Settings → Privacy in the IFClite viewer; the privacy guide explains what is sent.',
   'settings.privacy.toastAction': 'Privacy settings',
   'settings.collaboration.identityTitle': 'Your identity',
   'settings.collaboration.displayName': 'Display name',

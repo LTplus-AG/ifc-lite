@@ -58,6 +58,7 @@ export const settingsIt = {
   "settings.privacy.analyticsOptOutHint": "Interrompe subito l'invio di eventi di utilizzo e di errore e il conteggio delle visualizzazioni di pagina da questo browser. Dal prossimo caricamento della pagina, gli script di analisi non vengono più caricati.",
   "settings.privacy.learnMore": "Leggi la guida sulla privacy",
   "settings.privacy.toastDisclosure": "IFClite conserva un registro delle azioni sul tuo dispositivo. Il visualizzatore ospitato invia anche statistiche anonime di utilizzo del prodotto, a meno che tu non le disattivi nelle impostazioni Privacy.",
+  "settings.privacy.toastDisclosureStandalone": "Questa pagina invia statistiche anonime di utilizzo del prodotto. Per rinunciarvi, apri Impostazioni → Privacy nel visualizzatore IFClite; la guida alla privacy spiega cosa viene inviato.",
   "settings.privacy.toastAction": "Impostazioni Privacy",
   "settings.collaboration.identityTitle": "La tua identità",
   "settings.collaboration.displayName": "Nome visualizzato",

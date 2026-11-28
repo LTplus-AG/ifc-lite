@@ -54,6 +54,7 @@ export const settingsFr = {
   "settings.privacy.analyticsOptOutHint": "Arrête immédiatement l'envoi des événements d'utilisation et d'erreur et le comptage des pages vues depuis ce navigateur. Dès le prochain chargement de la page, les scripts d'analyse ne sont plus chargés du tout.",
   "settings.privacy.learnMore": "Lire le guide de confidentialité",
   "settings.privacy.toastDisclosure": "IFClite stocke un journal d'actions sur votre appareil. La visionneuse hébergée envoie aussi des statistiques anonymes d'utilisation du produit, sauf si vous les désactivez dans les paramètres de confidentialité.",
+  "settings.privacy.toastDisclosureStandalone": "Cette page envoie des statistiques anonymes d'utilisation du produit. Pour les refuser, ouvrez Paramètres → Confidentialité dans la visionneuse IFClite ; le guide de confidentialité explique ce qui est envoyé.",
   "settings.privacy.toastAction": "Paramètres de confidentialité",
   "settings.collaboration.identityTitle": "Votre identité",
   "settings.collaboration.displayName": "Nom affiché",

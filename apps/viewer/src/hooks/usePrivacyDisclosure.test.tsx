@@ -56,6 +56,9 @@ it('translates the analytics disclosure and opens Settings → Privacy (#5866)',
 
   await advance(3550);
   assert.match(latestToast(), /TRANSLATED ANALYTICS DISCLOSURE/);
+  assert.equal(localStorage.getItem('ifclite.extensions.privacy-disclosure.v2'), null,
+    'not recorded (and analytics not started) in the same task that queues the toast');
+  await advance(300);
   const action = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('OPEN TRANSLATED PRIVACY'));
   assert.ok(action, 'the disclosure has a Settings → Privacy action');
   click(action);
@@ -77,7 +80,9 @@ it('shows the notice on pages outside the viewer, with no extension host, so ana
     </>,
   );
   await advance(3550);
-  assert.match(latestToast(), /anonymous product analytics/, 'the same notice is shown');
+  await advance(300);
+  assert.match(latestToast(), /anonymous product analytics/, 'the notice is shown');
+  assert.match(latestToast(), /IFClite viewer/, 'and says where the opt-out is, since this page has no Settings');
   assert.ok(localStorage.getItem('ifclite.extensions.privacy-disclosure.v2'), 'and recorded as shown');
   const action = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Read the privacy guide'));
   assert.ok(action, 'its action leads to the privacy guide, since there is no Settings dialog here');

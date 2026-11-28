@@ -33,9 +33,9 @@ if (resolved.length > 0) {
   const props = await viewer.getProperties(resolved[0]);
   console.log(props.propertySets);
 }
-
-viewer.destroy();
 ```
+
+Call `viewer.destroy()` when the host page no longer needs the viewer, for example in a component's unmount handler. It removes the iframe.
 
 `IFCLiteEmbed.create()` appends an iframe to `container` with `src` set to `<origin>/v1?<options>`. It resolves after the handshake (below), not after a model has loaded: a `modelUrl` given to `create()` loads in the background. To run commands against a model, call `loadModel()` and await it, as above, or wait for the `model-loaded` event. If the handshake does not finish within `timeout` (default 15000 ms), it removes the iframe and rejects. Each later command rejects after 30 s without a reply.
 

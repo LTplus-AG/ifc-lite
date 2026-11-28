@@ -30,7 +30,8 @@ node scripts/ids-conformance/run.mjs --engine-config my-engine.json
 ```
 
 `--engine-config` can be repeated to add several engines. `--limit <n>`
-runs only the first `n` cases. `--out <dir>` (default `docs/guide`) is where
+runs only the first `n` cases when `n` is positive; `0`, a negative or a
+non-numeric value runs the full corpus. `--out <dir>` (default `docs/guide`) is where
 both `ids-conformance.json` and `ids-conformance.md` are written. The
 directory must already exist, and unless you also pass `--no-doc` it must hold
 an `ids-conformance.md` with the generated-region markers; the JSON is
@@ -69,7 +70,7 @@ Engines in other runtimes plug in without code through a JSON
 
 Both commands are argv arrays run without a shell; `{ids}`, `{ifc}` and
 `{id}` (the case id) are replaced per case, and either command may be left
-out. Only the last line of stdout is read, so earlier log lines are fine.
+out. Only the last line of stdout is read, so earlier log lines are fine, as long as stdout and stderr each stay under 4 MiB: past that the command is stopped and the case is recorded as `error`.
 That line is one JSON object: `validate` answers `{"verdict": "pass"}` or
 `{"verdict": "fail"}`, `audit` answers `{"verdict": "valid"}` or
 `{"verdict": "invalid"}`, and either may answer

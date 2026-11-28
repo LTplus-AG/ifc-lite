@@ -43,14 +43,14 @@ The viewer deployment ships serverless functions under `api/` at the repository 
 
 ### Free-model chat proxy (`/api/chat`)
 
-The proxy forwards free-model requests to an OpenAI-compatible endpoint and counts each anonymous user's daily requests in a Postgres database (Neon). It refuses any model that is not in `LLM_FREE_MODELS`.
+The proxy forwards free-model requests to an OpenAI-compatible endpoint and counts daily requests per client IP address in a Postgres database (Neon). The key is a hash of the IP, so clients behind the same public IP share one quota. It refuses any model that is not in `LLM_FREE_MODELS`.
 
 | Variable | Required | Effect |
 |---|---|---|
 | `LLM_API_BASE` | yes | Base URL of the upstream API. The proxy posts to `<base>/chat/completions`. |
 | `LLM_API_KEY` | yes | API key for that endpoint. |
 | `LLM_FREE_MODELS` | yes | Comma-separated model ids the proxy accepts. Keep it in step with `VITE_LLM_FREE_MODELS`. |
-| `LLM_FREE_DAILY_LIMIT` | yes | Free requests per user per day. Over the limit the proxy answers `429`. |
+| `LLM_FREE_DAILY_LIMIT` | yes | Free requests per client IP per day. Over the limit the proxy answers `429`. |
 | `APP_URL` | yes | The viewer's origin. Requests from it are allowed. |
 | `APP_ALLOWED_ORIGINS` | no | Further allowed origins, comma-separated. |
 | `DATABASE_URL` | yes | Postgres connection string. The proxy creates its `llm_chat_usage` table when it is missing. |

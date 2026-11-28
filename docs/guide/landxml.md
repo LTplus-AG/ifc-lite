@@ -153,6 +153,8 @@ LandXML terrain is loaded: it is draped onto the loaded terrain and creates no m
 | PNG or JPEG | a world file beside it (`.pgw`, `.pngw`, `.jgw`, `.jpgw`, `.jpegw`, `.wld`) and a `.aux.xml` or `.prj` naming an EPSG code | can be, as the original bytes |
 | XYZ tiles or WMS | the EPSG:3857 tile grid, or a WMS 1.1.1 `GetMap` in the terrain's CRS over the terrain's extent | never: the viewer drape only |
 
+Sidecars are matched by the image's name: `ortho.png` pairs with `ortho.pgw` (or `ortho.wld`) and `ortho.prj`, and a GDAL sidecar must carry the full image name, `ortho.png.aux.xml`. A `terrain.prj` next to `ortho.png` is not attached, and the drape is refused.
+
 Map tiles are draped from the **Terrain Imagery** card in the terrain's model information panel
 (select the model in the hierarchy); the card offers the service form once the terrain declares a
 CRS. Pick **XYZ tiles** and give an http(s) URL template containing `{z}`, `{x}` and `{y}` and a

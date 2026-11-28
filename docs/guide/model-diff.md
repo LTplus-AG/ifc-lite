@@ -766,10 +766,13 @@ The comparison covers every `IfcObjectDefinition` in the model, read through the
     `model_diff` is not alone in reading a session's unsaved edits: the
     headless backend folds them into its query adapter, so read tools such as
     `get_entity`, `query_entities`, `count_entities`, `spatial_hierarchy` and
-    `georeferencing_check` answer from the edited session too, and report a
-    `pendingMutations` count when edits are queued. Not every read folds:
-    `relationships`, `units`, `georeferencing` and the geometry, clash and
-    viewer tools still answer from the parsed file (see the
+    `georeferencing_check` answer from the edited session too. All but
+    `georeferencing_check` also report a `pendingMutations` count when edits
+    are queued. Not every read folds:
+    `relationships`, `units` and the geometry, clash and viewer tools still
+    answer from the parsed file. `georeferencing` returns both: the session
+    state (including a `georeferencing_write`) in `georef`, and the parsed
+    file's state in `georeferencing` (see the
     [MCP guide](mcp.md)). The edits reach a file only
     on `export_ifc` / `model_save`. Use `mutation_diff` to see the queued edits
     themselves.

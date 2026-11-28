@@ -129,11 +129,7 @@ fn count_spike_triangles(mesh: &Mesh) -> usize {
     n
 }
 
-#[derive(Clone, Copy)]
-enum ConsolidationUse {
-    ClosedOutput,
-    BooleanOperand,
-}
+use plans::ConsolidationUse;
 
 impl ClippingProcessor {
     /// Re-merge the kernel's per-plane fragments via 2D polygon union, then
@@ -212,7 +208,7 @@ impl ClippingProcessor {
             supported.buckets.extend(supported.folded_buckets.iter().copied());
             supported.buckets.extend(supported.fold_support_buckets.iter().copied());
         }
-        let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale);
+        let mut planned = plans::build(&buckets, &merged_bucket_keys, &supported, length_unit_scale, usage);
         let Some(output) = candidates::emit(&mut planned, &buckets, &supported) else {
             return ConsolidationOutcome::established(mesh);
         };

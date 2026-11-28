@@ -59,10 +59,7 @@ pub(super) fn try_cut(host: &Mesh, cutter: &Mesh) -> Option<Retry> {
     })?;
 
     let clipper = ClippingProcessor::new();
-    let union = clipper.union_meshes(&shells).ok()?;
-    if clipper.failure_count() != 0 || !strict_closed_mesh(&union) {
-        return None;
-    }
+    let union = clipper.closed_shell_union(&shells)?;
     let union_volume = signed_volume(&union);
     // The same relative tolerance used when choosing between frame retries.
     let tolerance = source_volume * 1.0e-3;

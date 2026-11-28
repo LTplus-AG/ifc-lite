@@ -244,9 +244,15 @@ class GeometryProcessor {
   exportStep(/* ... */): Uint8Array | null;
   exportIfcx(buffer, onlyKnownProperties?, pretty?): Uint8Array | null;
   exportMerged(buffers: Uint8Array[], schema?): Uint8Array | null;
+  exportUsd(buffer): Uint8Array | null;
   exportHbjson(buffer, name): Uint8Array | null;
+  exportHbjsonWithStats(buffer, name): { content: Uint8Array; stats: HbjsonStats } | null;
+  exportDfjson(buffer, name): string | null;
+  exportLandXmlTerrain(buffer, productIds: Uint32Array, options?): LandXmlTerrainExport | null;
 }
 ```
+
+Rhino `.3dm` scenes and CityJSON are standalone functions exported from the package, not processor methods: `exportRhinoScene` and `exportCityJson` load the separate `@ifc-lite/wasm/rhino` module on first use (see the `@ifc-lite/wasm` section below).
 
 `extractSweptDiskDescriptions` returns `null` until `init()` completes. Omit
 `ids` to inspect every product, or pass an empty `Uint32Array` to select none.
@@ -359,6 +365,7 @@ class IfcQuery {
   entity(expressId: number): EntityNode;
   get storeys(): EntityNode[];
   get project(): EntityNode | null;
+  get hierarchy(): SpatialHierarchy | null;
 
   // SQL (DuckDB-WASM, lazily initialized on first call)
   sql(query: string): Promise<SQLResult>;
@@ -410,7 +417,9 @@ class EntityNode {
 
   // Data
   properties(): PropertySet[];
+  property(psetName: string, propName: string): PropertyValue | null;
   quantities(): QuantitySet[];
+  quantity(qsetName: string, quantityName: string): number | null;
   allAttributes(): Array<{ name: string; value: string | number | boolean }>;
 
   // Generic traversal
@@ -505,6 +514,7 @@ class Renderer {
 
   // Rendering
   render(options?: RenderOptions): void;
+  requestRender(): void;  // schedule a frame for the host's render loop
 
   // Camera controls
   fitToView(): void;
@@ -512,6 +522,7 @@ class Renderer {
 
   // Selection (GPU picking)
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
+  pickRect(x0: number, y0: number, x1: number, y1: number, options?: PickOptions): Promise<Set<number>>;
 
   // Scene access
   // Narrower than the package-internal `Scene` class on purpose: `SceneContents`
@@ -523,6 +534,9 @@ class Renderer {
 
   // Resize handling
   resize(width: number, height: number): void;
+
+  // Release GPU resources
+  destroy(): void;
 }
 ```
 
@@ -562,6 +576,8 @@ class StepExporter {
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView);
 
   export(options: StepExportOptions): StepExportResult;
+  // Required for map-geometry normalization (export() throws for it)
+  exportAsync(options: StepExportOptions): Promise<StepExportResult>;
 }
 
 interface StepExportOptions {
@@ -793,7 +809,7 @@ class BulkQueryEngine {
 
 ### CsvConnector
 
-Import property updates from CSV files: `parse`, `match`, `generateMutations`, `import`, `preview`, `autoDetectMappings`.
+Import property updates from CSV files: `parse`, `match`, `generateMutations`, `importAsync`, `preview`, `autoDetectMappings`.
 
 Mutation types cover properties (`CREATE/UPDATE/DELETE_PROPERTY`, `CREATE/DELETE_PROPERTY_SET`), quantities, named attributes (`UPDATE_ATTRIBUTE`), positional STEP args (`UPDATE_POSITIONAL_ATTRIBUTE`), and entity churn (`CREATE_ENTITY`, `DELETE_ENTITY`).
 
@@ -865,6 +881,7 @@ interface ProjectParams {
   Description?: string;
   Schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   LengthUnit?: string;  // 'METRE' (default), 'MILLIMETRE', 'FOOT'
+  Currency?: string;    // e.g. 'CHF', written as IfcMonetaryUnit; no default
   Author?: string;
   Organization?: string;
   FileName?: string;                    // STEP header FILE_NAME.name; default: 'created.ifc'
@@ -936,8 +953,12 @@ function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number, view
 interface SpatialAnchor {
   ownerHistoryId: number | null; // optional from IFC4 onward
   bodyContextId: number;     // 'Body' subcontext (or parent context fallback)
+  axisContextId: number;     // 'Axis' subcontext (or parent context fallback)
+  rootContextId?: number | null;
   storeyId: number;
   storeyPlacementId: number; // the storey's own IfcLocalPlacement
+  schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'; // default 'IFC4'
+  lengthUnitScale?: number;  // metres per native unit; default 1
   guidRandom?: RandomSource; // optional seeded [0,1) source: pins the emitted
                              // GlobalIds for reproducible in-store builds
                              // (counterpart of ProjectParams.GuidSource)
@@ -957,8 +978,11 @@ BCF (BIM Collaboration Format) support for topic tracking. Implements BCF 2.1 an
 ### readBCF / writeBCF
 
 ```typescript
-// Read a BCF/BCFzip file (accepts File, Blob, or ArrayBuffer)
-function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProject>;
+// Read a BCF/BCFzip file (accepts File, Blob, ArrayBuffer, or Uint8Array)
+function readBCF(
+  file: File | Blob | ArrayBuffer | Uint8Array,
+  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number; onWarning?: (message: string, kind: 'skipped' | 'version') => void },
+): Promise<BCFProject>;
 
 // Write a BCF file (returns a Blob)
 function writeBCF(project: BCFProject): Promise<Blob>;
@@ -974,7 +998,7 @@ function createBCFComment(options: { author: string; comment: string }): BCFComm
 function addTopicToProject(project: BCFProject, topic: BCFTopic): void;
 function addCommentToTopic(topic: BCFTopic, comment: BCFComment): void;
 function addViewpointToTopic(topic: BCFTopic, viewpoint: BCFViewpoint): void;
-function updateTopicStatus(/* topic, status, ... */): void;
+function updateTopicStatus(topic: BCFTopic, status: string, modifiedAuthor: string): void;
 ```
 
 ### Viewpoints
@@ -1023,14 +1047,16 @@ function validateIDS(
 ### Facet checking
 
 ```typescript
-function checkFacet(facet, entity, accessor): boolean;
-function filterByFacet(facet, entities, accessor): EntityRef[];
-function checkEntityFacet(facet, entity): boolean;
-function checkAttributeFacet(facet, entity, accessor): boolean;
-function checkPropertyFacet(facet, entity, accessor): boolean;
-function checkClassificationFacet(facet, entity, accessor): boolean;
-function checkMaterialFacet(facet, entity, accessor): boolean;
-function checkPartOfFacet(facet, entity, accessor): boolean;
+// Every check* function takes (facet, expressId, accessor) and returns a FacetCheckResult
+function checkFacet(facet: IDSFacet, expressId: number, accessor: IFCDataAccessor): FacetCheckResult;
+// Candidate expressIds for an applicability facet, or undefined when it cannot pre-filter
+function filterByFacet(facet: IDSFacet, accessor: IFCDataAccessor): number[] | undefined;
+function checkEntityFacet(facet, expressId, accessor): FacetCheckResult;
+function checkAttributeFacet(facet, expressId, accessor): FacetCheckResult;
+function checkPropertyFacet(facet, expressId, accessor): FacetCheckResult;
+function checkClassificationFacet(facet, expressId, accessor): FacetCheckResult;
+function checkMaterialFacet(facet, expressId, accessor): FacetCheckResult;
+function checkPartOfFacet(facet, expressId, accessor): FacetCheckResult;
 ```
 
 ### Constraints, audit, translation
@@ -1045,7 +1071,7 @@ function auditIDSDocument(/* ... */): IDSAuditReport;
 function auditIDSStructure(/* ... */): IDSAuditReport;
 
 // Report localisation
-function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): TranslationService;
+function createTranslationService(locale?: 'en' | 'de' | 'fr' | 'it' | 'ru'): TranslationService; // default 'en'
 ```
 
 ---
@@ -1058,10 +1084,11 @@ function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): Translatio
 
 ```typescript
 class Drawing2DGenerator {
-  initialize(): Promise<void>;
-  generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Pass a GPUDevice to enable the GPU section cutter; omit it for CPU only
+  initialize(gpuDevice?: GPUDevice): Promise<void>;
+  generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): Promise<Drawing2D>;
   // Same drawing from a replayable source, one batch at a time (see DrawingMeshSource)
-  generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): Promise<Drawing2D>;
   // Push chunks one at a time: addGeometry → endGeometry → addOcclusion → finish | cancel
   beginDrawing(config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): DrawingSession;
   dispose(): void;
@@ -1070,7 +1097,7 @@ class Drawing2DGenerator {
 interface DrawingMeshSource { pass(pass: 'geometry' | 'occlusion'): AsyncIterable<readonly MeshData[]>; }
 class StoreyFloorLevels { add(meshes): void; floors(): number[]; } // storeyFloorsFromMeshes, batch by batch
 
-function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions> & PlanSymbolOptions): Promise<Drawing2D>;
+function generateFloorPlan(meshes: MeshData[], elevation: number | StoreyCut, options?: Partial<GeneratorOptions> & PlanSymbolOptions): Promise<Drawing2D>;
 function generateSection(meshes: MeshData[], axis: 'x' | 'z', position: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
 function createSectionConfig(axis: 'x' | 'y' | 'z', position: number, options?: Partial<Omit<SectionConfig, 'plane'>>): SectionConfig;
 ```

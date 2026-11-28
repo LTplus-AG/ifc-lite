@@ -66,8 +66,12 @@ import init, { IfcAPI } from '@ifc-lite/wasm';
 // Initialize WASM
 await init();
 
-// Or with custom URL
-await init('/path/to/ifc-lite_bg.wasm');
+// Or with a custom URL (pass an object; a bare string still works but
+// wasm-bindgen logs a deprecation warning)
+await init({ module_or_path: '/path/to/ifc-lite_bg.wasm' });
+
+// Or synchronously, from bytes or a compiled module you already hold
+// initSync({ module: wasmBytes });
 
 // Create API instance
 const api = new IfcAPI();
@@ -416,6 +420,18 @@ before either, the getter is `undefined`. Prepass/index installation and `setSou
 `clearPrePassCache` preserves it. See [refusal diagnostics](../guide/geometry.md#pipeline-refusal-diagnostics)
 and `rust/wasm-bindings/src/api/pipeline_diagnostics.rs`.
 
+#### Further methods
+
+The `.d.ts` carries more entry points than the sections above describe. Their
+signatures are in `packages/wasm/pkg/ifc-lite.d.ts`:
+
+- Sharded pre-pass over passed bytes: `scanEntityIndexShard`, `resolveStyledItemsShard`, `finalizePrepassStyles` (the byte-taking twins of the `*FromSource` methods above).
+- Sparse source loading: `sparseBegin`, `sparseInstall`, `sparseExpand`, `sparseMarkAbsent`, `sparseSetInverseEdges`, `sparseTakeMisses`, `sparseStats`, `sparseInvalidateDerived`, `sparseReset`, `sparseEnd`, with `processGeometryBatchSparse`, `processGeometryBatchPartitionedSparse` and `setEmitSparseFacts`.
+- Geometry analysis and editing: `extractSweptDiskDescriptions`, `extrusionDefinitions`, `simplifyMeshes` (returns `SimplifiedMeshes`), `setSkipVoids`.
+- Planning: `planMapConversionNormalization(content)` and `planSectionExport(content, planesJson, trim)`, each returning JSON text.
+- Export: `exportHbjsonWithStats(content, name)` and `exportLandXmlTerrain(content, productIds, options)`.
+- LandXML: `parseLandXmlSourceBytes`, `parseLandXmlSourceBytesWithOptions`, `parseLandXmlTinBytes`, `createLandXmlTinStreamSession` (returns a `LandXmlTinStreamSession`), `inspectLandXmlAlignmentAtDistance`, `probeLandXmlAlignmentAtDistance` and `probeLandXmlAlignmentAtStation`.
+
 #### Getters
 
 ```typescript
@@ -425,7 +441,9 @@ readonly is_ready: boolean; // true once the API is initialized
 
 ### Other Exported Classes
 
-Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive room-layout topology), `Contours2D` and `ScanOutlineJs` (see below), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive room-layout topology), `Contours2D` and `ScanOutlineJs` (see below), `CompactBatch` (from `MeshCollection.encodeCompact`), `SimplifiedMeshes`, `LandXmlTinStreamSession` and `AlignmentAxisJs`, and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+
+Free functions beside the 2D operations below: `clashIntersectionSolid(positionsA, indicesA, positionsB, indicesB)` (returns `ClashIntersectionSolidJs`), `splitMeshByZones(positions, indices, zones, footprints?, footprintCounts?)` (returns `ZoneSplitJs` with `ZonePieceJs` parts, or `undefined`), `setGeometryProgressCallback(callback?)`, and `get_memory()`.
 
 `SymbolicFillArea.geometryItemId` optionally identifies an unambiguous direct
 fill item in a single flat representation. Match it together with the owning
@@ -532,6 +550,7 @@ class MeshCollection {
   readonly length: number;
   get(index: number): MeshDataJs | undefined;      // clones (non-destructive)
   takeMesh(index: number): MeshDataJs | undefined; // moves out (read-once, faster)
+  encodeCompact(cellSize: number): CompactBatch;   // compact encoding; empties the vertex arrays
   hasRtcOffset(): boolean;
   readonly rtcOffsetX: number;
   readonly rtcOffsetY: number;
@@ -646,6 +665,10 @@ class MeshDataJs {
   readonly vertexCount: number;
   readonly triangleCount: number;
   readonly geometryClass: number;     // 0 = occurrence, 1 = orphan type, 2 = instanced type
+  readonly geometryItemId: number | undefined; // source IfcRepresentationItem; never set with materialId
+  readonly materialId: number | undefined;     // IfcMaterial layer sliced
+  readonly metallic: number | undefined;       // authored metallic, when present
+  readonly roughness: number | undefined;      // authored roughness, when present
 
   // Optional capture of the local frame (undefined when not captured)
   readonly localBounds: Float32Array | undefined;   // object-space AABB [minX..maxZ]
@@ -658,6 +681,8 @@ class MeshDataJs {
   readonly textureHeight: number;
   readonly textureRepeatS: boolean;
   readonly textureRepeatT: boolean;
+  readonly textureId: number;         // IfcSurfaceTexture express id; 0 when untextured
+  readonly textureUrl: string | undefined; // IfcImageTexture.URLReference for the host to resolve
   readonly shadingColor: Float32Array | undefined;  // authored SurfaceColour, when distinct
 }
 ```
@@ -767,14 +792,19 @@ bash scripts/build-wasm.sh
 # packages/wasm/pkg/ifc-lite.d.ts
 ```
 
-### Build Targets
+### Bundles
 
-| Target | Output | Use Case |
-|--------|--------|----------|
-| `web` | ES modules | Modern browsers |
-| `bundler` | CommonJS | Webpack/Rollup |
-| `nodejs` | Node.js | Server-side |
-| `no-modules` | Global | Script tag |
+Every bundle is built with `wasm-pack --target web` (ES modules). The script
+does not build the `bundler`, `nodejs` or `no-modules` targets.
+
+| Bundle | Output directory | When it is built |
+|--------|------------------|------------------|
+| Default engine | `packages/wasm/pkg/` | Always |
+| Geometry core (`@ifc-lite/wasm/core`) | `packages/wasm/pkg-core/` | `BUILD_CORE=1` (set by the release workflow) |
+| Threaded (atomics + shared memory) | `packages/wasm/pkg-threaded/` | `BUILD_THREADED=1` |
+| Retained browser executor (`@ifc-lite/wasm/retained`) | `packages/wasm/pkg-retained/` | `BUILD_RETAINED=1` |
+| Diff (`@ifc-lite/wasm/diff`) | `packages/wasm/pkg-diff/` | Always (separate crate `rust/diff-wasm`) |
+| Rhino scene (`@ifc-lite/wasm/rhino`) | `packages/wasm/pkg-rhino/` | Always (separate crate `rust/rhino-wasm`) |
 
 
 ### Streaming prepass source fingerprints

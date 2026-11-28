@@ -229,7 +229,7 @@ uncertain (`review`) is never applied.
 ```bash
 ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.name.includes('Fire'))"
 ifc-lite run analysis.js model.ifc          # `bim` is global in the script
-ifc-lite schema            # full API JSON (namespaces: model, query, viewer, mutate, create, export, ids, bcf)
+ifc-lite schema            # full API JSON (namespaces: bim, query, model, viewer, mutate, store, create, export, clash, schedule, ...)
 ifc-lite schema --compact  # names + descriptions only
 ```
 
@@ -268,5 +268,5 @@ list|check|reconcile|confirm-absent` inspects durable BCF writes. See
 ifc-lite query model.ifc --type IfcDoor --json | jq -r '.[].name'
 for f in *.ifc; do echo "$f: $(ifc-lite query "$f" --type IfcWall --count) walls"; done
 ifc-lite merge arch.ifc struct.ifc --out fed.ifc && ifc-lite validate fed.ifc
-ifc-lite bsdd psets IfcWall | jq '.["Pset_WallCommon"]'
+ifc-lite bsdd psets IfcWall --json | jq '.["Pset_WallCommon"]'
 ```
